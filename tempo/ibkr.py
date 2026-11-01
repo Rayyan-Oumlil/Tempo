@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ib_async import IB
 
-from trader.config import IbkrConfig
+from tempo.config import IbkrConfig
 
 PAPER_PREFIXES = ("DU", "DF")  # IBKR paper account ids
 

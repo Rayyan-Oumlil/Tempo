@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace as NS
 
-from trader.health import run_health
+from tempo.health import run_health
 
 
 def fake_ib(accounts=("DU1234567",), net="1000000", skew=0, positions=(), trades=()):

@@ -1,4 +1,4 @@
-# active-trading
+# Tempo
 
 Day / swing / active trading on an **Interactive Brokers paper account**. Currently: connection + read-only health check.
 
@@ -13,8 +13,8 @@ Day / swing / active trading on an **Interactive Brokers paper account**. Curren
 
 ## Health check
 ```
-python -m trader.health
+python -m tempo.health
 ```
 Checks: paper account (DU*/DF*), equity, cash, buying power, clock skew vs IB server, open positions/orders. Exit code 0 = healthy.
 
-Non-paper accounts are refused at connect time (`trader/ibkr.py`). Tests: `pytest`.
+Non-paper accounts are refused at connect time (`tempo/ibkr.py`). Tests: `pytest`.

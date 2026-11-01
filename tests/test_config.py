@@ -1,7 +1,7 @@
 import pytest
 
-from trader.config import load_config
-from trader.ibkr import assert_paper
+from tempo.config import load_config
+from tempo.ibkr import assert_paper
 
 
 def test_defaults_target_gateway_paper_readonly():

@@ -1,6 +1,6 @@
 """Read-only account health check. NEVER places orders.
 
-Usage: python -m trader.health
+Usage: python -m tempo.health
 """
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 
-from trader.config import load_config
-from trader.ibkr import PAPER_PREFIXES, connect
+from tempo.config import load_config
+from tempo.ibkr import PAPER_PREFIXES, connect
 
 MAX_CLOCK_SKEW_SECONDS = 5.0
 SUMMARY_TAGS = ("NetLiquidation", "TotalCashValue", "BuyingPower", "AvailableFunds")
