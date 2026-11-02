@@ -20,12 +20,12 @@ State: **flat**, no open orders.
 
 ## Next
 
-**Hardening only, by decision (2026-11-02).** The four hardening items are done (see the update in [research/log.md](research/log.md)): bracket take-profit seen firing live, journal lock, `smoke` and `size` tested, calendar extended through 2027.
+**Hardening only, by decision (2026-11-02).** Done: bracket take-profit seen firing, journal lock, `smoke` and `size` tested, calendar through 2027, reference-price question settled by measurement, and a repeatable live suite (`TEMPO_LIVE=1 pytest tests/live`, five checks, passed twice).
 
-What is still open is the accepted-limitations list in the log. Reasonable next hardening, in order:
-1. **Run the full set of live checks once more, end to end, on a fresh trading day** (lifecycle, bracket, kill, crash plus reconcile) and confirm the journal ends with nothing unresolved.
-2. **Decide on the stale reference price:** use a delayed quote when available, or accept the daily close and its 10% band.
-3. **Update the calendar from the NYSE page each December** (the code refuses entries after 2027-12-31).
+What remains is small. In order:
+1. **Run `TEMPO_LIVE=1 pytest tests/live` after every change to order code**, and once on each new trading day before trusting the tools.
+2. **Update the calendar from the NYSE page each December** (the code refuses entries after 2027-12-31).
+3. **Review the accepted limitations** in [research/log.md](research/log.md) before building anything on top: two oversize exits together, manual `--accept-missing` for cancelled orders, estimated backtest costs.
 
 Features that wait until the owner says hardening is done: daily loss limit, a real strategy, data subscription, unattended loop, scanner (see [foundations-plan.md](foundations-plan.md)).
 

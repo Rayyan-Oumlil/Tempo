@@ -34,7 +34,12 @@ def equity_usd(ib) -> float:
 
 
 def last_close(ib, contract) -> float:
-    """Last daily close, used as the reference price for position-size checks (not for trading decisions)."""
+    """Latest daily-bar close, the reference price for the size cap and the price band (not a trading price).
+
+    During regular hours the newest bar is TODAY's, so this is the latest trade (about 15 minutes delayed without a
+    data subscription): checked 2026-11-02, SPY 754.84 vs a delayed quote of 755.07. Before the open, or on a day
+    the market is closed, it is the previous close.
+    """
     bars = ib.reqHistoricalData(contract, "", "5 D", "1 day", "TRADES", useRTH=True, formatDate=1)
     if not bars:
         raise RuntimeError(f"No daily bars for {contract.symbol}; cannot price an entry check")

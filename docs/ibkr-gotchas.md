@@ -64,7 +64,7 @@ Observed on the paper account `DUR239224` (IB Gateway port 4002, ib_async 2.1.0)
 - **Other clients see your orders:** client 22 saw client 21's order with `reqAllOpenOrders()` and `openTrades()`.
 
 - **Position feed lags fills.** Right after a fill, `ib.positions()` can briefly miss the change. A retrying flatten could then sell twice and open a short, so `tempo.flatten` sells each symbol once, waits for the feed to settle, and reports anything still open.
-- **Reference price for caps:** entry checks use the last daily close, which can be a day old. Fine for a cap; do not use it as a trading price.
+- **Reference price for caps:** entry checks use the newest daily bar. During regular hours that is today's bar, i.e. the latest trade (delayed about 15 minutes): SPY 754.84 against a delayed quote of 755.07 on 2026-11-02. Before the open it is the previous close. Fine for a cap and a sanity band; do not use it as a trading price.
 
 ## Fees (paper, 2026-11-02)
 

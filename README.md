@@ -28,7 +28,9 @@ Day / swing / active trading on an **Interactive Brokers paper account**. Python
 | `IBKR_READONLY=0 python -m tempo.flatten [SYMBOL]` | Cancel that symbol's resting orders, then close longs and shorts | yes (fills) |
 | `IBKR_READONLY=0 python -m tempo.kill` | Switch to `reduce_only`, cancel every order, flatten everything, confirm flat | yes (fills) |
 
-On Windows PowerShell set the variable first: `$env:IBKR_READONLY=0`. Tests: `pytest`.
+On Windows PowerShell set the variable first: `$env:IBKR_READONLY=0`.
+
+**Tests:** `pytest` runs the fast offline suite. `TEMPO_LIVE=1 pytest tests/live` (PowerShell: `$env:TEMPO_LIVE=1; pytest tests/live`) runs five checks against the paper account during regular hours: lifecycle, bracket plus kill, take-profit exit, kill on a long and a short, and crash recovery. It places real paper orders and leaves the account flat.
 
 ## How orders are kept safe
 Every order goes through `tempo/orders.py` (`place`); nothing else calls `ib.placeOrder`. It refuses non-paper accounts and duplicates, sets `tif`, tags the order with a unique `orderRef`, and writes the intent to `journal/journal.jsonl` **before** sending. New entries also need: mode `normal`, regular hours, a known equity and price, size under the position cap, and no stale unresolved journal entries. Orders that reduce a live position are never refused by those limits.
