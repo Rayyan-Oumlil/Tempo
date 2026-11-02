@@ -1,6 +1,7 @@
 """Read-only IBKR API smoke tests: one per API capability. NEVER places an order.
 
-Usage: python -m tempo.smoke [SYMBOL]      (default SPY)
+Usage: python -m tempo.smoke [SYMBOL] [--what-if]      (default SPY)
+--what-if adds a commission/margin what-if order (needs IBKR_READONLY=0; still places nothing).
 
 Each test prints OK/FAIL plus any IB error codes it triggered (errorEvent), because
 IB reports most problems as async error messages, not exceptions.
@@ -19,6 +20,7 @@ from tempo.config import load_config
 from tempo.ibkr import connect
 
 DELAYED_FROZEN = 4  # works with no market-data subscription, also when the market is closed
+REQUEST_TIMEOUT_SECONDS = 15
 INFO_CODES = {2104, 2106, 2158, 2119}  # "data farm connection is OK" notices, not errors
 
 
@@ -50,11 +52,15 @@ def t_contract_details(ib: IB, symbol: str) -> str:
 
 def t_snapshot(ib: IB, symbol: str) -> str:
     ib.reqMarketDataType(DELAYED_FROZEN)
-    (ticker,) = ib.reqTickers(_stock(symbol))
+    contract = _stock(symbol)
+    ib.qualifyContracts(contract)
+    (ticker,) = ib.reqTickers(contract)
     price = ticker.marketPrice()
-    if math.isnan(price):
+    if math.isnan(price) or price <= 0:
+        price = ticker.close  # market closed or no live quote: fall back to the last close
+    if math.isnan(price) or price <= 0:
         raise RuntimeError("no price returned (see error codes: 10089/10167/354 = market-data subscription issue)")
-    return f"marketPrice={price} bid={ticker.bid} ask={ticker.ask} close={ticker.close} (type {DELAYED_FROZEN})"
+    return f"price={price} bid={ticker.bid} ask={ticker.ask} close={ticker.close} (type {DELAYED_FROZEN})"
 
 
 def t_head_timestamp(ib: IB, symbol: str) -> str:
@@ -87,8 +93,10 @@ TESTS: tuple[tuple[str, Callable[[IB, str], str]], ...] = (
     ("market data snapshot", t_snapshot),
     ("history start date", t_head_timestamp),
     ("daily bars (10D)", t_daily_bars),
-    ("what-if order", t_what_if),
 )
+# Gateway treats even a what-if as an order attempt: on a read-only API it pops a modal dialog and the
+# request hangs. So it only runs on request, and only with IBKR_READONLY=0.
+WHAT_IF_TEST = ("what-if order", t_what_if)
 
 
 def run_test(ib: IB, name: str, fn: Callable[[IB, str], str], symbol: str) -> Result:
@@ -108,21 +116,29 @@ def run_test(ib: IB, name: str, fn: Callable[[IB, str], str], symbol: str) -> Re
     return Result(name, ok, detail + (f"  IB: {' | '.join(codes)}" if codes else ""))
 
 
-def main(symbol: str) -> int:
+def main(symbol: str, what_if: bool = False) -> int:
     load_dotenv()
-    ib = connect(load_config())
+    cfg = load_config()
+    if what_if and cfg.readonly:
+        raise RuntimeError("--what-if needs IBKR_READONLY=0 in .env (and Read-Only API unticked in Gateway)")
+    tests = TESTS + ((WHAT_IF_TEST,) if what_if else ())
+    ib = connect(cfg)
+    ib.RequestTimeout = REQUEST_TIMEOUT_SECONDS  # default is no timeout: a silent subscription gap would hang forever
+    results = []
     try:
-        results = [run_test(ib, name, fn, symbol) for name, fn in TESTS]
+        for name, fn in tests:
+            r = run_test(ib, name, fn, symbol)
+            print(f"[{'OK' if r.ok else 'FAIL'}] {r.name:<22} {r.detail}", flush=True)
+            results.append(r)
     finally:
         ib.disconnect()
-    for r in results:
-        print(f"[{'OK' if r.ok else 'FAIL'}] {r.name:<22} {r.detail}")
     return 0 if all(r.ok for r in results) else 1
 
 
 if __name__ == "__main__":
     try:
-        raise SystemExit(main(sys.argv[1].upper() if len(sys.argv) > 1 else "SPY"))
+        args = [a for a in sys.argv[1:] if not a.startswith("--")]
+        raise SystemExit(main(args[0].upper() if args else "SPY", what_if="--what-if" in sys.argv))
     except (ConnectionError, RuntimeError, ValueError) as err:
         print(f"[FAIL] {err}", file=sys.stderr)
         raise SystemExit(1)
