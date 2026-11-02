@@ -5,3 +5,4 @@ __pycache__/
 journal/
 state.json
 data/
+.coverage
