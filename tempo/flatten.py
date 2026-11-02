@@ -31,21 +31,33 @@ def _open_positions(ib, symbol):
     return [p for p in ib.positions() if p.position and (symbol is None or p.contract.symbol == symbol)]
 
 
-def cancel_symbol_orders(ib, symbol: str, timeout: float = SETTLE_SECONDS) -> int:
-    """Cancel every resting order for a symbol (all bracket legs together, never one). Returns how many."""
-    targets = [t for t in ib.reqAllOpenOrders() if t.contract.symbol == symbol]
+def cancel_symbol_orders(ib, symbol: str, timeout: float = SETTLE_SECONDS) -> tuple[int, int]:
+    """Cancel every resting order for a symbol (all bracket legs together, never one).
+
+    Returns (how many cancels were sent, how many orders are STILL resting afterwards). A non-zero second number
+    means a cancel was not confirmed in time.
+    """
+    def resting():
+        return [t for t in ib.reqAllOpenOrders() if t.contract.symbol == symbol]
+
+    targets = resting()
     for t in targets:
         ib.cancelOrder(t.order)
-    wait_until(ib, lambda: not [t for t in ib.reqAllOpenOrders() if t.contract.symbol == symbol], timeout)
-    return len(targets)
+    wait_until(ib, lambda: not resting(), timeout)
+    return len(targets), len(resting())
 
 
 def _close_one(ib, pos, *, journal, limits, state_path, now, wait_seconds) -> Check:
     contract = pos.contract
     symbol = contract.symbol
-    cancelled = cancel_symbol_orders(ib, symbol)
-    ib.qualifyContracts(contract)
+    cancelled, still_resting = cancel_symbol_orders(ib, symbol)
     action = "SELL" if pos.position > 0 else "BUY"
+    if still_resting:
+        # Selling now could double up with an exit that is still live and flip the account the other way.
+        return Check(f"{action} {symbol}", False,
+                     f"cancel not confirmed: {still_resting} order(s) still resting; NOT selling. "
+                     "Check Gateway, then run flatten again")
+    ib.qualifyContracts(contract)
     qty = abs(int(pos.position))
     try:
         trade = place(ib, contract, MarketOrder(action, qty, orderRef="tempo-flatten"), reason="flatten",

@@ -69,3 +69,30 @@ def test_kill_when_market_closed_cancels_but_reports_positions_remain(env):
     assert any("market closed" in c.detail for c in checks if not c.ok)
     assert ib.held["SPY"] == 3 and ib.global_cancels == 1
     assert get_mode(env["state_path"]) == "reduce_only"
+
+
+# --- review finding: if a cancel is not confirmed, say exactly why nothing was sold ---
+
+def test_flatten_reports_the_exact_reason_when_a_cancel_is_not_confirmed(env):
+    ib = FakeIB(positions={"SPY": 3}, fill=False)
+    stop = ib.placeOrder(SPY, LimitOrder("SELL", 3, 150.0))   # a resting exit
+    ib.cancelOrder = lambda order: None                        # the cancel never takes effect
+    ib.fill = True
+    checks = flatten_positions(ib, now=OPEN_NOW, **env)
+    failed = [c for c in checks if not c.ok]
+    assert failed and "cancel not confirmed" in failed[0].detail and "1 order" in failed[0].detail
+    assert len(ib.placed) == 1 and ib.held["SPY"] == 3         # nothing was sold: it could have flipped the account short
+    assert stop.orderStatus.status == "Submitted"
+
+
+def test_kill_with_a_sticky_order_still_cancels_what_it_can_and_names_the_problem(env):
+    ib = FakeIB(positions={"SPY": 3}, fill=False)
+    ib.placeOrder(SPY, LimitOrder("SELL", 3, 150.0))
+    ib.reqGlobalCancel = lambda: None
+    ib.cancelOrder = lambda order: None
+    ib.fill = True
+    checks = kill(ib, now=OPEN_NOW, **env)
+    assert not all(c.ok for c in checks)
+    assert any("still open" in c.detail for c in checks if c.name == "cancel")
+    assert any("cancel not confirmed" in c.detail for c in checks)
+    assert ib.held["SPY"] == 3

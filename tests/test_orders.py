@@ -1,6 +1,6 @@
 import pytest
 from fakes import CLOSED_NOW, OPEN_NOW, SPY, FakeIB
-from ib_async import LimitOrder, MarketOrder
+from ib_async import LimitOrder, MarketOrder, StopOrder
 
 from tempo.journal import Journal
 from tempo.orders import Limits, OrderRefused, place, record_outcome
@@ -218,3 +218,26 @@ def test_unreadable_open_orders_means_not_an_exit(env):
     ib.reqAllOpenOrders = lambda: (_ for _ in ()).throw(RuntimeError("down"))
     with pytest.raises(OrderRefused):
         place(ib, SPY, MarketOrder("SELL", 5), reason="exit", limits=LIMITS, now=OPEN_NOW, **env)
+
+
+# --- review finding: an OCA pair can fill only one leg, so it claims the larger leg, not the sum ---
+
+def test_an_oca_pair_claims_its_larger_leg_not_both_legs(env):
+    set_mode("reduce_only", "t", env["state_path"])
+    ib = FakeIB(positions={"SPY": 10}, fill=False)
+    ib.placeOrder(SPY, LimitOrder("SELL", 6, 150.0, ocaGroup="g1", ocaType=1))   # take-profit
+    ib.placeOrder(SPY, StopOrder("SELL", 6, 90.0, ocaGroup="g1", ocaType=1))     # stop, same group
+    place(ib, SPY, MarketOrder("SELL", 4), reason="scale out", limits=LIMITS, now=OPEN_NOW, **env)   # 10 - 6 = room for 4
+    with pytest.raises(OrderRefused):   # the scale-out order now rests too, so the 10 are fully claimed
+        place(ib, SPY, MarketOrder("SELL", 1), reason="x", limits=LIMITS, now=OPEN_NOW, **env)
+
+
+def test_orders_in_different_groups_or_no_group_still_add_up(env):
+    set_mode("reduce_only", "t", env["state_path"])
+    ib = FakeIB(positions={"SPY": 10}, fill=False)
+    ib.placeOrder(SPY, LimitOrder("SELL", 4, 150.0, ocaGroup="a", ocaType=1))
+    ib.placeOrder(SPY, StopOrder("SELL", 4, 90.0, ocaGroup="b", ocaType=1))
+    ib.placeOrder(SPY, LimitOrder("SELL", 1, 160.0))
+    with pytest.raises(OrderRefused):   # 4 + 4 + 1 = 9 claimed, only 1 left
+        place(ib, SPY, MarketOrder("SELL", 2), reason="x", limits=LIMITS, now=OPEN_NOW, **env)
+    place(ib, SPY, MarketOrder("SELL", 1), reason="x", limits=LIMITS, now=OPEN_NOW, **env)

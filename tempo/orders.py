@@ -46,14 +46,28 @@ def is_exit(ib, contract, order) -> bool:
     """
     try:
         held = sum(p.position for p in ib.positions() if _same(p.contract, contract))
-        committed = sum(t.order.totalQuantity - t.orderStatus.filled for t in ib.reqAllOpenOrders()
-                        if _same(t.contract, contract) and t.order.action == order.action)
+        committed = _committed(ib.reqAllOpenOrders(), contract, order.action)
     except Exception:  # noqa: BLE001 - unreadable state must not be treated as an exit
         return False
     qty = order.totalQuantity
     if order.action == "SELL":
         return held > 0 and qty <= held - committed
     return held < 0 and qty <= -held - committed
+
+
+def _committed(open_trades, contract, action: str) -> float:
+    """Size already claimed by resting orders on this side. An OCA group (ocaType 1: one fill cancels the rest)
+    can only ever fill one leg, so it claims its largest leg, not the sum; everything else adds up."""
+    loose, groups = 0.0, {}
+    for t in open_trades:
+        if not (_same(t.contract, contract) and t.order.action == action):
+            continue
+        remaining = t.order.totalQuantity - t.orderStatus.filled
+        if t.order.ocaGroup and t.order.ocaType == 1:
+            groups[t.order.ocaGroup] = max(groups.get(t.order.ocaGroup, 0.0), remaining)
+        else:
+            loose += remaining
+    return loose + sum(groups.values())
 
 
 def _same(a, b) -> bool:
