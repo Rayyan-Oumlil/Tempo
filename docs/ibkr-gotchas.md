@@ -55,7 +55,11 @@ Observed on the paper account `DUR239224` (IB Gateway port 4002, ib_async 2.1.0)
 - **Cancelling one leg of an OCA pair cancels the other.** Cancelling only the take-profit also cancelled the stop and left a long position with **no stop**. Never cancel a single bracket leg; to exit, flatten and cancel all.
 - **`ib.reqGlobalCancel()` cancels every client's open orders**, not just this client's (client 22 cancelled a GTC order placed by client 21). Right after it, `ib.openTrades()` can still list one trade for a few seconds (stale local state, probably); confirm with `ib.reqAllOpenOrders()`.
 - **Orders outlive the connection.** A GTC order stayed open after its client disconnected and after it reconnected. A stop left at IBKR still protects you if the script dies, and an unwanted order keeps working until cancelled. DAY orders were not tested.
+- **Live bracket through Tempo (2026-11-02):** MKT parent filled; the GTC stop rested as `PreSubmitted` at IBKR; a separate process (`tempo.health`) saw the position and both orders. `tempo.kill` then cancelled the resting orders, closed that long and a separate QQQ short, confirmed flat, and left the mode at `reduce_only`.
 - **Other clients see your orders:** client 22 saw client 21's order with `reqAllOpenOrders()` and `openTrades()`.
+
+- **Position feed lags fills.** Right after a fill, `ib.positions()` can briefly miss the change. A retrying flatten could then sell twice and open a short, so `tempo.flatten` sells each symbol once, waits for the feed to settle, and reports anything still open.
+- **Reference price for caps:** entry checks use the last daily close, which can be a day old. Fine for a cap; do not use it as a trading price.
 
 ## Fees (paper, 2026-11-02)
 

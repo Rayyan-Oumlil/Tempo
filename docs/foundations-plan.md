@@ -4,6 +4,8 @@ Goal: small, solid, boring. About 600 lines of new code across five phases, each
 
 Paper account only. Work in order; each phase stands on the one before.
 
+**Status (2026-11-02): all five phases built, tested and checked live on paper.** Differences from the plan are noted under each phase.
+
 ## Phase 1: one door for orders
 
 **Build:** `tempo/orders.py` and `tempo/journal.py`.
@@ -16,7 +18,7 @@ Paper account only. Work in order; each phase stands on the one before.
 ## Phase 2: stop button
 
 **Build:** `tempo/state.py` and `tempo/kill.py`.
-- State file with three values from pysystemtrade's idea: `normal`, `reduce_only` (no new entries, exits allowed), `halt` (cancel everything). `place` checks it.
+- State file with two modes: `normal` and `reduce_only` (no new entries, exits allowed). The planned third mode, `halt`, was dropped: exits are never refused, so it would behave exactly like `reduce_only`. `place` checks it; an unreadable state file counts as `reduce_only`.
 - `python -m tempo.kill`: set `halt`, `reqGlobalCancel`, flatten **longs and shorts** with retry passes, confirm with `reqAllOpenOrders` and positions (not the local trade list, which can be stale), and report.
 - **Exit rule from mmr:** an order that reduces the live position is never refused by any limit. Entries fail closed if equity or the price cannot be read.
 
@@ -32,17 +34,19 @@ Paper account only. Work in order; each phase stands on the one before.
 
 ## Phase 4: brackets that cannot hurt you
 
-**Build:** `tempo/bracket.py` on top of `place`.
+**Build:** `tempo/bracket.py` on top of the order door (`dispatch`).
 - Parent plus stop plus take-profit in one OCA group, GTC stop so it rests at IBKR.
 - Built-in rule from our probe: **never cancel one leg**; the only exits are "flatten" and "cancel all".
 - Entry size comes from `risk.py`; the stop price is required, not optional.
 
-**Done when:** live paper run shows parent filled, stop resting, then `kill` clears everything, and a test proves no code path cancels a single leg.
+**Added beyond the plan:** `confirm_bracket` waits for the entry, proves the stop is resting, and if the stop is not resting it closes the position at once. If the entry never fills it cancels all legs together.
+
+**Done when:** live paper run shows parent filled, stop resting, then `kill` clears everything, and a test proves no code path cancels a single leg. (Met 2026-11-02.)
 
 ## Phase 5: the evidence harness
 
 **Build:** `evidence/gate.yaml`, a tiny backtester, and `docs/research/log.md`.
-- **Pre-register the gate before any backtest:** minimum round trips, net positive after the measured costs, share of trades tainted by bot errors, a stated number of variants tried, and "no live-money talk on delayed data". Adapted from `gate_criteria.yaml`; never edited between gates.
+- **Pre-register the gate before any backtest** (`evidence/gate.json`, checked by `tempo.gate`): minimum round trips, net positive after the measured costs, share of trades tainted by bot errors, a stated number of variants tried, and "no live-money talk on delayed data". Adapted from `gate_criteria.yaml`; never edited between gates.
 - **Backtester on free daily bars** (20 years), with the measured costs: 0.005 USD per share, 1.00 USD minimum, sell-side fee about 20.6 USD per million, slippage assumed. Signals use only data available at the time.
 - **Negative control:** run the same pipeline on shuffled or random data. A "good" result on noise means the pipeline is wrong.
 - **Research log:** append-only, dated; corrections go underneath, never over the original (mmr).
