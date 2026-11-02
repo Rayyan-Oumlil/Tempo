@@ -7,13 +7,17 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 
 from dotenv import load_dotenv
 
 from tempo.config import load_config
 from tempo.ibkr import PAPER_PREFIXES, connect
+from tempo.journal import Journal
+from tempo.state import STATE_FILE, get_mode
 
 MAX_CLOCK_SKEW_SECONDS = 5.0
+STALE_INTENT_SECONDS = 60.0
 SUMMARY_TAGS = ("NetLiquidation", "TotalCashValue", "BuyingPower", "AvailableFunds")
 
 
@@ -24,7 +28,7 @@ class Check:
     detail: str
 
 
-def run_health(ib) -> list[Check]:
+def run_health(ib, journal: Journal | None = None, state_path: Path = STATE_FILE) -> list[Check]:
     accounts = ib.managedAccounts()
     account_id = accounts[0] if accounts else ""
     checks = [Check("account", account_id.startswith(PAPER_PREFIXES), f"{account_id or 'none'} (paper expected)")]
@@ -45,6 +49,13 @@ def run_health(ib) -> list[Check]:
     positions = [p for p in ib.positions() if p.position]
     checks.append(Check("positions", True, f"{len(positions)} open"))
     checks.append(Check("open orders", True, f"{len(ib.openTrades())} open"))
+    if journal is not None:
+        mode = get_mode(state_path)
+        checks.append(Check("mode", True, f"{mode}" + (" (new entries blocked)" if mode != "normal" else "")))
+        pending = journal.unresolved()
+        stale = [r for r in pending if journal.now() - r["ts"] > STALE_INTENT_SECONDS]
+        checks.append(Check("journal", not stale, f"{len(pending)} unresolved ({len(stale)} stale)"
+                            + ("; run python -m tempo.reconcile" if stale else "")))
     return checks
 
 
@@ -52,7 +63,7 @@ def main() -> int:
     load_dotenv()
     ib = connect(load_config())
     try:
-        checks = run_health(ib)
+        checks = run_health(ib, journal=Journal())
     finally:
         ib.disconnect()
     for c in checks:
