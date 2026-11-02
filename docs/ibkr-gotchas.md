@@ -21,9 +21,10 @@ Observed on the paper account `DUR239224` (IB Gateway port 4002, ib_async 2.1.0)
 - **Read-Only API** (Gateway setting) blocks orders **and what-if orders**. A what-if on a read-only connection opens a modal popup and the request hangs forever.
 - **`ib.RequestTimeout` defaults to no timeout.** Set it (we use 15 seconds), or a missing subscription hangs the script.
 - **`reqTickers` needs a qualified contract** (`qualifyContracts` first, so it has a `conId`).
-- **`whatIfOrder` returned an empty list** on the closed market; we haven't gotten a usable result.
+- **`whatIfOrder` returns `[]` unless the order has an explicit `tif="DAY"`.** The harmless 10349 notice ("TIF set to DAY based on order preset") swallows it. With `tif="DAY"` it returns an `OrderState` with the commission (1.000003 USD for 1 SPY) and margin change (initMarginChange 318.36 for 1 SPY at about 1,062 CAD). Verified 2026-11-02, market open.
 - **CAD-only paper account:** IBKR lists no USD `ExchangeRate`, so equity in USD needs the USD.CAD forex price (we use daily MIDPOINT bars).
 - **Buying a US stock with only CAD works.** CAD `TotalCashValue` fell by exactly the converted cost (1,063.68 CAD for 760.64 USD at about 1.398). No USD ledger line appeared and we saw no margin interest.
+- **Per-currency cash:** only the `TotalCashValue` tag is reported per currency (no `CashBalance`). Commissions also leave a small negative USD line in `SettledCashByDate` (about -4 USD after a few trades).
 - **Commission:** 1.00 USD on a 1-share trade (probably a per-order minimum).
 - **Overnight venue:** contract `exchange="OVERNIGHT"` (`primaryExchange="ARCA"` for SPY worked). ib_async 2.1.0 has no `includeOvernight` order field. A buy filled immediately (759.64 vs last close 755.72). Sell limits at 748.16, 730 and 700 sat in `Submitted` and never filled: no bid, or a paper-simulator limit. A market sell is rejected (387).
 - **Outside regular hours (video 07):** market orders aren't accepted; use a limit with `outsideRth=True`.
@@ -32,6 +33,56 @@ Observed on the paper account `DUR239224` (IB Gateway port 4002, ib_async 2.1.0)
 - **Paper reset** is requested in the live account's portal and landed the same evening for us (5,000 CAD to 250,000 CAD).
 - **Time zones (video 06):** use explicit UTC or US/Eastern; a creator lost days to a wrong zone.
 - **Scripts in a scratch file** that call `load_dotenv()` with no file path can fail with an `AssertionError` in `find_dotenv()`; run them as a module or save them as a file.
+
+## Orders (probed 2026-11-02, market open, SPY, paper)
+
+| Test | Result |
+|---|---|
+| **Always set `tif` explicitly** | Without it, every order gets the 10349 notice. ib_async turns that notice into a transient `Cancelled` status (log line "Canceled order"), so `trade.isDone()` can be `True` on an order that then fills. This also made my first latency numbers meaningless (about 50 ms was the false cancel, not the fill). All Tempo tools set `tif="DAY"` |
+| Shorting | `SELL` with no shares fills and gives position -1; a `BUY` covers it. Paper allows it. `tempo.flatten` only closes longs |
+| Order types accepted when far from market | `STP`, `STP LMT`, `TRAIL` (percent and amount), `LMT` GTC, `outsideRth`, Adaptive algo, `REL`, hidden. `LOC` came back `Cancelled` |
+| Bad price (off tick, or negative) | 110, status `Cancelled`. Tick for SPY is 0.01, for TSX stocks 0.005 |
+| Quantity 0 | 321, `ValidationError` (never reaches the exchange) |
+| Quantity 10,000,000 | 201 rejected, status `Inactive` |
+| `LMT` order with no price | 201 "Message must contain field # 44", `Inactive` |
+| Cancel an order that is already cancelled | 10148 (or 161 "not in a cancellable state"); harmless, but `reqGlobalCancel` produces a burst of 161s |
+| Modify | Re-place the same order object (same `orderId`) with the new price; it updates in place |
+
+## Brackets, stops and kill switch
+
+- **Parent with children:** with a far `LMT` parent, the take-profit and stop children sit `PreSubmitted` until the parent fills; cancelling the parent cancels both children.
+- **Live bracket (MKT parent, TP `LMT`, `STP`, same `ocaGroup`, `ocaType=1`):** parent filled, TP `Submitted`, stop `PreSubmitted` (held by IBKR, not by our script).
+- **Cancelling one leg of an OCA pair cancels the other.** Cancelling only the take-profit also cancelled the stop and left a long position with **no stop**. Never cancel a single bracket leg; to exit, flatten and cancel all.
+- **`ib.reqGlobalCancel()` cancels every client's open orders**, not just this client's (client 22 cancelled a GTC order placed by client 21). Right after it, `ib.openTrades()` can still list one trade for a few seconds (stale local state, probably); confirm with `ib.reqAllOpenOrders()`.
+- **Orders outlive the connection.** A GTC order stayed open after its client disconnected and after it reconnected. A stop left at IBKR still protects you if the script dies, and an unwanted order keeps working until cancelled. DAY orders were not tested.
+- **Other clients see your orders:** client 22 saw client 21's order with `reqAllOpenOrders()` and `openTrades()`.
+
+## Fees (paper, 2026-11-02)
+
+| Item | Measured |
+|---|---|
+| Currency | USD, always (it is a US stock) |
+| BUY | 0.005 USD per share, minimum 1.00 (1, 10, 100 shares = 1.00; 300 shares = 1.50) |
+| SELL | same, plus about 0.0157 USD per share at a price near 760 (about 20.6 USD per million sold; likely the SEC fee, inferred) |
+| 300-share round trip | 7.70 USD of commission on 228k USD per side |
+| CAD-to-USD | No visible markup: a round trip's CAD cash change matched the net USD at the market USD.CAD rate (1.3970 vs 1.3967) |
+| Account base | The account seems to carry a small USD debit instead of converting CAD (inferred). A real account may charge interest on a USD debit held overnight; unverified |
+| Preview | `whatIfOrder` with `tif="DAY"` returns the commission before you send the order |
+
+A paper account only simulates fees. Check the real fee schedule before going live.
+
+## Market data (no subscription)
+
+- **Quotes:** `reqMarketDataType(4)` then `reqMktData` gives streaming bid/ask/last about 15 minutes delayed. The values arrive in `ticker.bid/ask/last` with `ticker.marketDataType == 3`; ib_async's `Ticker` has no `delayedBid` fields. Asking for live data (type 1) gives 10089.
+- **Intraday history is delayed too:** at about 09:55 ET the newest 1-minute bar was 09:38. A `keepUpToDate` subscription added no bars in 70 seconds. A live intraday strategy needs a data subscription.
+- **History depth and speed:** daily bars, 20 years in 3 s (5,026 bars); 5 days of 1-minute bars in 0.4 s (1,569 bars, regular hours); 1 week of 5-minute bars 0.2 s; head timestamp for SPY is 1993-01-29. `ADJUSTED_LAST`, `BID_ASK` and `OPTION_IMPLIED_VOLATILITY` work.
+- **Too much history hangs:** 1 year of 1-minute bars timed out at 15 s with no error. Request in chunks.
+- **1-second bars:** "1 D" and "30 D" with `1 secs` give 162 "invalid step". Not investigated further.
+- **Pacing:** three identical daily-bar requests in a row did not trigger a pacing error.
+- **Canada:** `Stock("RY","TSE","CAD")` and `XIU` give 162 "No market data permissions for TSE". `Stock("SHOP","SMART","CAD")` returned daily bars, so route Canadian stocks through SMART.
+- **Not available:** 5-second real-time bars (420, no permission for AMEX), market depth (10092), fundamentals (10358). The news provider list loads; news content was not tested.
+- **Works:** option chain parameters (64 chains for SPY), `reqPnL`, `reqExecutions` (today's fills), `reqCompletedOrders`, 96 account summary values.
+- **Scanner:** works without a subscription for `STK.US.MAJOR` (`TOP_PERC_GAIN`, `MOST_ACTIVE`, `HOT_BY_VOLUME`, 8 rows in 0.2 to 2.4 s). The gainers are micro-caps (INO, RBNE, CLRO), so add price/volume filters before trusting them. `STK.CA.TSE` gives 162 "not configured". A 162 "scanner subscription cancelled" follows every scan and is harmless.
 
 ## Windows
 

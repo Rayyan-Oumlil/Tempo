@@ -11,22 +11,22 @@ Paper account `DUR239224` only. Tempo refuses any non-paper account.
 | Order round trip: place a far limit, see it, cancel it, confirm clean | `IBKR_READONLY=0 python -m tempo.roundtrip` |
 | Risk rules and position sizing (`rules.json`: 2% risk per trade, 100% max position) | `python -m tempo.size SPY 740` |
 | Overnight order test: buy filled; sell did not fill (thin market) | see [ibkr-gotchas.md](ibkr-gotchas.md) |
+| Regular-session market sell (`IBKR_READONLY=0 python -m tempo.flatten SPY`), 2026-11-02 09:37 ET | Sold 1 SPY @ 759.53 (cost 760.64), commission 1.02 USD |
+| Lifecycle tool (`IBKR_READONLY=0 python -m tempo.lifecycle SPY 1`): buy, confirm, sell, P&L and cash | Live run: bought 760.24, sold 760.19, net -2.07 USD, CAD cash -2.88 |
+| Gateway probe, 2026-11-02: market data limits, history depth, scanner, order types and rejections, shorting, brackets and OCA, kill switch, fees, FX | Findings in [ibkr-gotchas.md](ibkr-gotchas.md) |
 
-State: **long 1 SPY** (average cost 760.64 USD) left over from the overnight test. Sell it in the regular session.
+State: **flat**, no open orders.
 
 ## Next
 
-1. **Monday 09:30 ET, about 10:00:** sell the 1 SPY with a market order; record the fill, commission, and CAD/USD cash changes.
-2. **Lifecycle tool:** one command that buys, confirms the fill, sells, and reports P&L and cash by currency.
-3. **Order management:** bracket orders (parent, take-profit, stop) so stops rest at IBKR; trailing stops optional.
-4. **Kill switch:** cancel all orders and flatten all positions.
-5. **Data:** intraday bars stored locally, downloaded within IBKR pacing limits; decide on a live data subscription (the US exchange bundle is about 4.50 USD/month, unverified).
-6. **Backtester** with commissions (1 USD per order seen), USD/CAD cost, and slippage; avoid survivorship bias.
-7. **Strategy research:** one or two simple strategies, judged on data they were not tuned on.
-8. **Safeguards:** daily loss limit, max open positions, no new trades near the close, position reconciliation.
-9. **Gap scanner:** IBKR's built-in scanner (`TOP_PERC_GAIN`, `STK.US.MAJOR`); test whether it works without a subscription.
-10. **Unattended loop:** scheduler, market calendar, logging, restarts (Docker + IBC), Telegram alerts.
-11. **Journal:** ledger of every trade plus a short "learnings" file, in R-multiples.
+Detailed in [foundations-plan.md](foundations-plan.md), built from the [reference audit](research/reference-audit.md). A data subscription is only needed for live intraday work (quotes and bars are about 15 minutes delayed); 20 years of daily bars are free.
+
+1. **Phase 1, one door for orders:** `orders.place` plus an append-only journal (intent before send).
+2. **Phase 2, stop button:** `normal / reduce_only / halt` state, `tempo.kill` (global cancel, flatten longs and shorts, verify flat). Exits are never refused.
+3. **Phase 3, reconcile at startup:** journal against open orders and executions; block trading until they agree.
+4. **Phase 4, brackets:** parent, stop and take-profit in one OCA group; never cancel one leg.
+5. **Phase 5, evidence harness:** pre-registered gate, backtester with measured costs, negative control, research log.
+6. **After that:** strategy research on daily bars, safeguards (daily loss limit that blocks entries only), data decision, scanner with filters, unattended loop (Docker), journal in R-multiples.
 
 ## Gate before real money
 
