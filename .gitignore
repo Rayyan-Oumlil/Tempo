@@ -2,3 +2,6 @@
 .venv/
 __pycache__/
 .pytest_cache/
+journal/
+state.json
+data/
