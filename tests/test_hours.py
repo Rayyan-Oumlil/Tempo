@@ -27,3 +27,9 @@ def test_early_close_day():
 def test_dst_changes_the_utc_offset():
     assert is_regular_hours(utc(2026, 7, 1, 13, 30))   # 09:30 EDT
     assert not is_regular_hours(utc(2026, 7, 1, 13, 29))
+
+
+def test_calendar_stops_covering_after_its_last_year():
+    from tempo.hours import calendar_covers
+    assert calendar_covers(utc(2026, 12, 31, 16))
+    assert not calendar_covers(utc(2027, 1, 4, 16))

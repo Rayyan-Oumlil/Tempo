@@ -19,9 +19,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from tempo.hours import is_regular_hours
+from tempo.hours import CALENDAR_THROUGH, calendar_covers, is_regular_hours
 from tempo.ibkr import assert_paper
-from tempo.journal import Journal
+from tempo.journal import STALE_INTENT_SECONDS, Journal
 from tempo.state import STATE_FILE, get_mode
 
 
@@ -33,7 +33,8 @@ class OrderRefused(RuntimeError):
 class Limits:
     max_position_pct: float  # largest entry, as % of equity
     duplicate_window_s: float = 5.0
-    stale_intent_s: float = 60.0  # an unresolved intent older than this blocks entries until reconciled
+    price_band_pct: float = 10.0  # a limit that could fill this far on the wrong side of the reference price is refused
+    stale_intent_s: float = STALE_INTENT_SECONDS  # an unresolved intent older than this blocks entries until reconciled
 
 
 def is_exit(ib, contract, order) -> bool:
@@ -69,15 +70,26 @@ def _check_entry(order, *, journal: Journal, state_path: Path, limits: Limits, e
     stale = [r for r in journal.unresolved() if journal.now() - r["ts"] > limits.stale_intent_s]
     if stale:
         raise OrderRefused(f"{len(stale)} unresolved order(s) in the journal: run python -m tempo.reconcile first")
-    if not order.outsideRth and not is_regular_hours(now):
-        raise OrderRefused("market is closed (entries need regular hours or outsideRth=True)")
+    if not order.outsideRth:
+        if not calendar_covers(now):
+            raise OrderRefused(f"market calendar only covers through {CALENDAR_THROUGH}: update tempo/hours.py")
+        if not is_regular_hours(now):
+            raise OrderRefused("market is closed (entries need regular hours or outsideRth=True)")
     if not equity_usd or equity_usd <= 0:
         raise OrderRefused("equity unknown: refusing a new entry")
     if not ref_price or ref_price <= 0:
         raise OrderRefused("reference price unknown: refusing a new entry")
+    limit = _price(order.lmtPrice)
+    band = limits.price_band_pct / 100
+    if limit and order.action == "BUY" and limit > ref_price * (1 + band):
+        raise OrderRefused(f"buy limit {limit} is more than {limits.price_band_pct:g}% above the reference price {ref_price}")
+    if limit and order.action == "SELL" and limit < ref_price * (1 - band):
+        raise OrderRefused(f"sell limit {limit} is more than {limits.price_band_pct:g}% below the reference price {ref_price}")
+    stop = _price(order.auxPrice) if order.orderType in ("STP", "STP LMT") else None
+    worst_price = max(p for p in (ref_price, limit, stop) if p)  # size the cap at the highest price the order could pay
     cap = equity_usd * limits.max_position_pct / 100
-    if order.totalQuantity * ref_price > cap:
-        raise OrderRefused(f"entry {order.totalQuantity * ref_price:,.0f} exceeds position cap {cap:,.0f} USD")
+    if order.totalQuantity * worst_price > cap:
+        raise OrderRefused(f"entry {order.totalQuantity * worst_price:,.0f} exceeds position cap {cap:,.0f} USD")
 
 
 def _check_duplicate(contract, order, journal: Journal, window_s: float) -> None:

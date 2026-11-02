@@ -13,11 +13,10 @@ from dotenv import load_dotenv
 
 from tempo.config import load_config
 from tempo.ibkr import PAPER_PREFIXES, connect
-from tempo.journal import Journal
+from tempo.journal import STALE_INTENT_SECONDS, Journal
 from tempo.state import STATE_FILE, get_mode
 
 MAX_CLOCK_SKEW_SECONDS = 5.0
-STALE_INTENT_SECONDS = 60.0
 SUMMARY_TAGS = ("NetLiquidation", "TotalCashValue", "BuyingPower", "AvailableFunds")
 
 

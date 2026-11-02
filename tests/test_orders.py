@@ -125,3 +125,40 @@ def test_record_outcome_closes_the_intent(env):
     assert env["journal"].unresolved() == []
     out = env["journal"].records()[-1]
     assert out["status"] == "Filled" and out["filled"] == 10 and out["commission"] == 1.0
+
+
+def test_entry_refused_once_the_market_calendar_has_expired(env):
+    from datetime import datetime, timezone
+    later = datetime(2027, 1, 4, 16, 0, tzinfo=timezone.utc)
+    with pytest.raises(OrderRefused, match="calendar"):
+        entry(FakeIB(), env, now=later)
+    entry(FakeIB(), env, LimitOrder("BUY", 1, 99.0, outsideRth=True), now=later)  # does not depend on the calendar
+
+
+# --- the cap and the price check use the order's own price, not just the caller's reference price ---
+
+def test_limit_far_above_the_reference_price_is_refused_as_a_fat_finger(env):
+    with pytest.raises(OrderRefused, match="reference"):
+        entry(FakeIB(), env, LimitOrder("BUY", 10, 500.0))  # reference is 100
+
+
+def test_short_limit_far_below_the_reference_price_is_refused(env):
+    with pytest.raises(OrderRefused, match="reference"):
+        entry(FakeIB(), env, LimitOrder("SELL", 10, 80.0))
+
+
+def test_limit_inside_the_band_and_a_far_passive_limit_are_allowed(env):
+    entry(FakeIB(), env, LimitOrder("BUY", 10, 105.0))
+    entry(FakeIB(), env, LimitOrder("BUY", 11, 50.0))   # far BELOW the market cannot fill at a bad price (roundtrip uses this)
+
+
+def test_cap_is_checked_at_the_orders_own_limit_price(env):
+    entry(FakeIB(), env, LimitOrder("BUY", 480, 100.0))                       # 48,000 <= 50,000
+    with pytest.raises(OrderRefused, match="position cap"):
+        entry(FakeIB(), env, LimitOrder("BUY", 481, 109.0))                   # 52,429 at its own price, 48,100 at the reference
+
+
+def test_cap_is_checked_at_a_stop_orders_trigger_price(env):
+    from ib_async import StopOrder
+    with pytest.raises(OrderRefused, match="position cap"):
+        entry(FakeIB(), env, StopOrder("BUY", 450, 120.0))                    # 54,000 at the stop, 45,000 at the reference

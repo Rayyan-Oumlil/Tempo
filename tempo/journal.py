@@ -5,6 +5,8 @@ Record kinds, tied together by `ref` (the order's unique orderRef):
   sent        the broker accepted the call (carries the orderId)
   outcome     the final state (Filled, Cancelled, error, ...)
   resolution  written by reconcile when an unconfirmed intent has been matched to the broker's records
+  fill        written by reconcile for each broker execution of a journaled order (deduplicated by exec_id),
+              so fills that happen after an order was resolved (a stop or take-profit firing) are not lost
 
 An `intent` with no `outcome` and no `resolution` is "unresolved".
 """
@@ -18,6 +20,7 @@ from typing import Callable
 
 JOURNAL_FILE = Path(__file__).resolve().parents[1] / "journal" / "journal.jsonl"
 CLOSING_KINDS = {"outcome", "resolution"}
+STALE_INTENT_SECONDS = 60.0  # an unresolved intent older than this blocks new entries (and health flags it)
 
 
 class Journal:
