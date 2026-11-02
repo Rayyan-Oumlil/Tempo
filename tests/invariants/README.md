@@ -15,4 +15,4 @@ Rules for this folder:
 | 4 | A bracket cannot be built without a stop | `test_invariants.py` |
 | 5 | Flatten trades the opposite side, for exactly the held size | `test_invariants.py` |
 | 6 | An order counts as an exit only if it fits in the part of the position not already claimed by resting orders | `test_invariants.py` |
-| 7 | Exits are never refused by mode, hours or size limits | `tests/test_orders.py` (`reduce_only` tests) |
+| 7 | Exits are never refused by mode, hours, size limits or the daily loss limit | `tests/test_orders.py`, `tests/test_daily_loss.py` |

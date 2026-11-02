@@ -116,7 +116,7 @@ def fake_size_env(monkeypatch, bars, equity=100_000.0):
     monkeypatch.setattr(size, "load_config", lambda: cfg())
     monkeypatch.setattr(size, "connect", lambda c: ib)
     monkeypatch.setattr(size, "equity_usd", lambda i: equity)
-    monkeypatch.setattr(size, "load_rules", lambda: RiskRules(2.0, 50.0))
+    monkeypatch.setattr(size, "load_rules", lambda: RiskRules(2.0, 50.0, 5.0))
     return ib
 
 

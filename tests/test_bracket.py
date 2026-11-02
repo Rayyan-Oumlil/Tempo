@@ -7,7 +7,7 @@ from tempo.orders import Limits, OrderRefused
 from tempo.risk import RiskRules
 from tempo.state import set_mode
 
-RULES = RiskRules(risk_per_trade_pct=2.0, max_position_pct=50.0)
+RULES = RiskRules(risk_per_trade_pct=2.0, max_position_pct=50.0, max_daily_loss_pct=5.0)
 LIMITS = Limits(max_position_pct=50.0)
 
 

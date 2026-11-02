@@ -33,12 +33,17 @@ def pytest_collection_modifyitems(config, items):
 @pytest.fixture(scope="module")
 def ib():
     load_dotenv()
-    if not is_regular_hours():
-        pytest.skip("market is closed: live order tests need regular hours")
     conn = connect(dataclasses.replace(load_config(), readonly=False))
     conn.RequestTimeout = 15
     yield conn
     conn.disconnect()
+
+
+@pytest.fixture
+def rth():
+    """Tests that send market orders need the regular session."""
+    if not is_regular_hours():
+        pytest.skip("market is closed: this live test needs regular hours")
 
 
 @pytest.fixture

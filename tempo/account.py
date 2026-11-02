@@ -44,3 +44,41 @@ def last_close(ib, contract) -> float:
     if not bars:
         raise RuntimeError(f"No daily bars for {contract.symbol}; cannot price an entry check")
     return float(bars[-1].close)
+
+
+PNL_UNSET = 1e300  # ib_async uses about 1.8e308 for "not set"
+# Seen live 2026-11-02: right after reqPnL the first callback can carry a STALE figure (-11 while the real daily P&L
+# was -151), and the real one follows about a second later. So the value is only read after it has settled.
+PNL_SETTLE_SECONDS = 2.0
+
+
+def _known(value: float) -> bool:
+    return value == value and abs(value) < PNL_UNSET  # not NaN, not the "unset" sentinel
+
+
+def daily_loss_pct(ib, timeout: float = 5.0) -> float:
+    """How far the account is down today, as a % of start-of-day equity (negative = up). Raises if unknown.
+
+    Uses IBKR's own daily P&L (realized + unrealized, base currency) rather than our own bookkeeping, and
+    start-of-day equity = NetLiquidation - daily P&L. The P&L subscription is always cancelled again.
+    Always waits PNL_SETTLE_SECONDS first (never trusts the first callback); `timeout` bounds the total wait.
+    """
+    net = next((v for v in ib.accountValues() if v.tag == "NetLiquidation" and v.currency != "BASE"), None)
+    if net is None:
+        raise RuntimeError("Account values lack NetLiquidation: cannot compute the daily loss")
+    account = ib.managedAccounts()[0]
+    pnl = ib.reqPnL(account)
+    try:
+        waited = 0.0
+        while waited < timeout and (waited < PNL_SETTLE_SECONDS or not _known(pnl.dailyPnL)):
+            ib.sleep(0.25)
+            waited += 0.25
+        daily = pnl.dailyPnL
+    finally:
+        ib.cancelPnL(account)
+    if not _known(daily):
+        raise RuntimeError(f"daily P&L not available from IBKR within {timeout:g}s")
+    start = float(net.value) - daily
+    if start <= 0:
+        raise RuntimeError(f"start-of-day equity {start:,.2f} is not positive (NetLiquidation {net.value}, daily P&L {daily})")
+    return -daily / start * 100

@@ -33,6 +33,11 @@ class FakeIB:
         self.fill = fill
         self.fill_seq = list(fill_seq or [])  # per-order fill decisions, then falls back to `fill`
         self.cash = {"CAD": 1000.0}
+        self.net_liq = 100_000.0     # base-currency NetLiquidation
+        self.daily_pnl = 0.0         # what reqPnL reports; nan or 1.8e308 simulates "not available"
+        self.pnl_after_polls = 0     # how many sleeps before the real P&L arrives
+        self.stale_pnl = float("nan")  # what it reports before that (IBKR can send a stale number first)
+        self.pnl_cancelled = 0
         self.price = price
         self.held = dict(positions or {})  # symbol -> signed quantity
         self.trades = []
@@ -91,4 +96,27 @@ class FakeIB:
                 for i, t in enumerate(self.trades) if t.orderStatus.filled]
 
     def accountValues(self):
-        return [NS(tag="TotalCashValue", currency=c, value=str(v)) for c, v in self.cash.items()]
+        rows = [NS(tag="TotalCashValue", currency=c, value=str(v)) for c, v in self.cash.items()]
+        return rows + [NS(tag="NetLiquidation", currency="CAD", value=str(self.net_liq)),
+                       NS(tag="NetLiquidation", currency="BASE", value=str(self.net_liq))]
+
+    def reqPnL(self, account):
+        fake = self
+        polls = {"n": 0}
+
+        class Pnl:
+            @property
+            def dailyPnL(self):
+                return fake.daily_pnl if polls["n"] >= fake.pnl_after_polls else fake.stale_pnl
+
+        original_sleep = self.sleep
+
+        def counting_sleep(seconds):
+            polls["n"] += 1
+            original_sleep(seconds)
+
+        self.sleep = counting_sleep
+        return Pnl()
+
+    def cancelPnL(self, account):
+        self.pnl_cancelled += 1

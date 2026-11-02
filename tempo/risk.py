@@ -13,12 +13,15 @@ RULES_FILE = Path(__file__).resolve().parents[1] / "rules.json"
 class RiskRules:
     risk_per_trade_pct: float  # max loss if the stop is hit, as % of equity
     max_position_pct: float  # max position value, as % of equity
+    max_daily_loss_pct: float  # no new entries once the account is down this much today, as % of start-of-day equity
 
     def __post_init__(self) -> None:
         if not 0 < self.risk_per_trade_pct <= 100:
             raise ValueError(f"risk_per_trade_pct must be in (0, 100], got {self.risk_per_trade_pct}")
         if not 0 < self.max_position_pct <= 100:
             raise ValueError(f"max_position_pct must be in (0, 100], got {self.max_position_pct}")
+        if not 0 < self.max_daily_loss_pct <= 100:
+            raise ValueError(f"max_daily_loss_pct must be in (0, 100], got {self.max_daily_loss_pct}")
 
 
 @dataclass(frozen=True)
@@ -31,10 +34,11 @@ class SizeResult:
 
 def load_rules(path: Path = RULES_FILE) -> RiskRules:
     data = json.loads(Path(path).read_text(encoding="utf-8"))
-    missing = [k for k in ("risk_per_trade_pct", "max_position_pct") if k not in data]
+    missing = [k for k in ("risk_per_trade_pct", "max_position_pct", "max_daily_loss_pct") if k not in data]
     if missing:
         raise ValueError(f"{path}: missing {', '.join(missing)}")
-    return RiskRules(float(data["risk_per_trade_pct"]), float(data["max_position_pct"]))
+    return RiskRules(float(data["risk_per_trade_pct"]), float(data["max_position_pct"]),
+                     float(data["max_daily_loss_pct"]))
 
 
 def position_size(equity: float, entry: float, stop: float, rules: RiskRules) -> SizeResult:

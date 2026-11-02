@@ -68,7 +68,7 @@ def place_bracket(ib, contract, plan: BracketPlan, *, journal: Journal, limits: 
     assert_paper(accounts[0] if accounts else "none")
     with journal.lock():
         parent = MarketOrder("BUY", plan.qty, orderRef="tempo-bracket", transmit=False)
-        _check_entry(parent, journal=journal, state_path=state_path, limits=limits,
+        _check_entry(ib, parent, journal=journal, state_path=state_path, limits=limits,
                      equity_usd=equity_usd, ref_price=plan.entry, now=now)
 
         oca = f"tempo-oca-{uuid.uuid4().hex[:10]}"

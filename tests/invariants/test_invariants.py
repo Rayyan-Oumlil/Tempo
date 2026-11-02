@@ -46,7 +46,7 @@ def test_2_the_intent_is_on_disk_before_the_broker_is_called(env):
 def test_3_a_live_account_never_reaches_the_broker_through_any_tool(env):
     ib = FakeIB(account="U1234567", positions={"SPY": 3})
     ib.placeOrder = lambda *a: pytest.fail("a live account reached placeOrder")
-    plan = plan_bracket(100_000.0, 100.0, 98.0, None, RiskRules(2.0, 50.0), qty=1)
+    plan = plan_bracket(100_000.0, 100.0, 98.0, None, RiskRules(2.0, 50.0, 5.0), qty=1)
     with pytest.raises(RuntimeError, match="not a paper account"):
         place(ib, SPY, MarketOrder("BUY", 1), reason="t", equity_usd=1e5, ref_price=100.0, now=OPEN_NOW, **env)
     with pytest.raises(RuntimeError, match="not a paper account"):
@@ -58,10 +58,10 @@ def test_3_a_live_account_never_reaches_the_broker_through_any_tool(env):
 
 def test_4_a_bracket_cannot_be_built_without_a_stop():
     with pytest.raises(TypeError):
-        plan_bracket(100_000.0, 100.0, take_profit=None, rules=RiskRules(2.0, 50.0))
+        plan_bracket(100_000.0, 100.0, take_profit=None, rules=RiskRules(2.0, 50.0, 5.0))
     for bad_stop in (0.0, -1.0, 100.0, 101.0):
         with pytest.raises(ValueError):
-            plan_bracket(100_000.0, 100.0, bad_stop, None, RiskRules(2.0, 50.0))
+            plan_bracket(100_000.0, 100.0, bad_stop, None, RiskRules(2.0, 50.0, 5.0))
 
 
 @pytest.mark.parametrize("held", [1, 2, 7, 100, -1, -5, -100])

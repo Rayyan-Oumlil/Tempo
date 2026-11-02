@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from tempo.account import daily_loss_pct
 from tempo.hours import CALENDAR_THROUGH, calendar_covers, is_regular_hours
 from tempo.ibkr import assert_paper
 from tempo.journal import STALE_INTENT_SECONDS, Journal
@@ -33,6 +34,7 @@ class OrderRefused(RuntimeError):
 class Limits:
     max_position_pct: float  # largest entry, as % of equity
     duplicate_window_s: float = 5.0
+    max_daily_loss_pct: float | None = None  # None switches the check off (offline tests only; rules.json always sets it)
     price_band_pct: float = 10.0  # a limit that could fill this far on the wrong side of the reference price is refused
     stale_intent_s: float = STALE_INTENT_SECONDS  # an unresolved intent older than this blocks entries until reconciled
 
@@ -86,7 +88,7 @@ def _fingerprint(contract, order) -> tuple:
             _price(order.lmtPrice) or 0, _price(order.auxPrice) or 0)
 
 
-def _check_entry(order, *, journal: Journal, state_path: Path, limits: Limits, equity_usd, ref_price, now) -> None:
+def _check_entry(ib, order, *, journal: Journal, state_path: Path, limits: Limits, equity_usd, ref_price, now) -> None:
     if get_mode(state_path) != "normal":
         raise OrderRefused("mode is reduce_only: new entries are blocked (python -m tempo.state normal to resume)")
     stale = [r for r in journal.unresolved() if journal.now() - r["ts"] > limits.stale_intent_s]
@@ -112,6 +114,14 @@ def _check_entry(order, *, journal: Journal, state_path: Path, limits: Limits, e
     cap = equity_usd * limits.max_position_pct / 100
     if order.totalQuantity * worst_price > cap:
         raise OrderRefused(f"entry {order.totalQuantity * worst_price:,.0f} exceeds position cap {cap:,.0f} USD")
+    if limits.max_daily_loss_pct is not None:  # last, because it asks the broker
+        try:
+            loss = daily_loss_pct(ib)
+        except Exception as exc:  # noqa: BLE001 - an unknown P&L must block new risk
+            raise OrderRefused(f"daily P&L unknown ({exc}): refusing a new entry") from exc
+        if loss >= limits.max_daily_loss_pct:
+            raise OrderRefused(f"daily loss limit hit: down {loss:.2f}% today (limit {limits.max_daily_loss_pct:.1f}%); "
+                               "exits are still allowed")
 
 
 def _check_duplicate(contract, order, journal: Journal, window_s: float) -> None:
@@ -146,7 +156,7 @@ def place(ib, contract, order, *, reason: str, journal: Journal, limits: Limits,
     with journal.lock():  # the checks and the send are one step: no other Tempo process can slip in between
         exit_order = is_exit(ib, contract, order)
         if not exit_order:
-            _check_entry(order, journal=journal, state_path=state_path, limits=limits,
+            _check_entry(ib, order, journal=journal, state_path=state_path, limits=limits,
                          equity_usd=equity_usd, ref_price=ref_price, now=now)
         return dispatch(ib, contract, order, reason=reason, journal=journal, limits=limits, exit_order=exit_order)
 

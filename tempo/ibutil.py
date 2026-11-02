@@ -20,7 +20,7 @@ def wait_until(ib, predicate, timeout: float) -> bool:
 
 def default_limits(rules_path: Path | None = None) -> Limits:
     rules = load_rules(rules_path) if rules_path else load_rules()
-    return Limits(max_position_pct=rules.max_position_pct)
+    return Limits(max_position_pct=rules.max_position_pct, max_daily_loss_pct=rules.max_daily_loss_pct)
 
 
 def default_journal() -> Journal:
