@@ -1,0 +1,71 @@
+import pytest
+from fakes import CLOSED_NOW, OPEN_NOW, SPY, FakeIB
+from ib_async import LimitOrder
+
+from tempo.flatten import flatten_positions
+from tempo.journal import Journal
+from tempo.kill import kill
+from tempo.orders import Limits
+from tempo.state import get_mode
+
+LIMITS = Limits(max_position_pct=50.0)
+
+
+@pytest.fixture
+def env(tmp_path):
+    return {"journal": Journal(tmp_path / "j.jsonl"), "state_path": tmp_path / "state.json", "limits": LIMITS}
+
+
+def ok(checks):
+    return all(c.ok for c in checks)
+
+
+def test_flatten_closes_longs_and_shorts(env):
+    ib = FakeIB(positions={"SPY": 3, "QQQ": -2})
+    checks = flatten_positions(ib, now=OPEN_NOW, **env)
+    assert ok(checks) and ib.held["SPY"] == 0 and ib.held["QQQ"] == 0
+    assert {o.action for o in ib.placed} == {"SELL", "BUY"}
+
+
+def test_flatten_one_symbol_leaves_others(env):
+    ib = FakeIB(positions={"SPY": 3, "QQQ": 2})
+    flatten_positions(ib, symbol="SPY", now=OPEN_NOW, **env)
+    assert ib.held["SPY"] == 0 and ib.held["QQQ"] == 2
+
+
+def test_flatten_cancels_resting_orders_for_the_symbol_first(env):
+    ib = FakeIB(positions={"SPY": 3}, fill=False)
+    stop = ib.placeOrder(SPY, LimitOrder("SELL", 3, 150.0))  # a resting protective order
+    ib.fill = True
+    flatten_positions(ib, now=OPEN_NOW, **env)
+    assert stop.orderStatus.status == "Cancelled" and ib.held["SPY"] == 0
+
+
+def test_flatten_with_nothing_open_is_a_pass(env):
+    assert ok(flatten_positions(FakeIB(), now=OPEN_NOW, **env))
+
+
+def test_flatten_reports_failure_when_orders_never_fill(env):
+    ib = FakeIB(positions={"SPY": 3}, fill=False)
+    checks = flatten_positions(ib, now=OPEN_NOW, wait_seconds=1, **env)
+    assert not ok(checks)
+
+
+def test_kill_sets_reduce_only_cancels_all_and_flattens(env):
+    ib = FakeIB(positions={"SPY": 3}, fill=False)
+    resting = ib.placeOrder(SPY, LimitOrder("BUY", 1, 50.0))
+    ib.fill = True
+    checks = kill(ib, now=OPEN_NOW, **env)
+    assert ok(checks)
+    assert ib.global_cancels == 1 and resting.orderStatus.status == "Cancelled"
+    assert ib.held["SPY"] == 0
+    assert get_mode(env["state_path"]) == "reduce_only"
+
+
+def test_kill_when_market_closed_cancels_but_reports_positions_remain(env):
+    ib = FakeIB(positions={"SPY": 3})
+    checks = kill(ib, now=CLOSED_NOW, **env)
+    assert not ok(checks)
+    assert any("market closed" in c.detail for c in checks if not c.ok)
+    assert ib.held["SPY"] == 3 and ib.global_cancels == 1
+    assert get_mode(env["state_path"]) == "reduce_only"
