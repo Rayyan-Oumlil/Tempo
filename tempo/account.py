@@ -31,3 +31,11 @@ def equity_usd(ib) -> float:
     if "USD" in rates:
         return amount * rates.get(net.currency, 1.0) / rates["USD"]
     return amount / _forex_usd_rate(ib, net.currency)
+
+
+def last_close(ib, contract) -> float:
+    """Last daily close, used as the reference price for position-size checks (not for trading decisions)."""
+    bars = ib.reqHistoricalData(contract, "", "5 D", "1 day", "TRADES", useRTH=True, formatDate=1)
+    if not bars:
+        raise RuntimeError(f"No daily bars for {contract.symbol}; cannot price an entry check")
+    return float(bars[-1].close)

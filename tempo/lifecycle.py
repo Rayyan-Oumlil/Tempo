@@ -3,24 +3,30 @@
 Usage: IBKR_READONLY=0 python -m tempo.lifecycle [SYMBOL] [QTY]      (default SPY 1)
 
 Regular trading hours only (market orders are rejected on the overnight venue, see docs/ibkr-gotchas.md).
-Paper accounts only (tempo.ibkr.connect refuses anything else). If the BUY does not fill it is cancelled and
-nothing is sold; if the SELL does not fill it is cancelled and the result says you are still long.
+Every order goes through tempo.orders.place (paper only, journaled, size-capped). If the BUY does not fill it is
+cancelled and nothing is sold; if the SELL does not fill it is cancelled and the result says you are still long.
 """
 from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
 
 from dotenv import load_dotenv
 from ib_async import MarketOrder, Stock
 
+from tempo.account import equity_usd, last_close
 from tempo.config import load_config
 from tempo.health import Check
 from tempo.ibkr import connect
+from tempo.ibutil import default_journal, default_limits, wait_until
+from tempo.journal import Journal
+from tempo.orders import Limits, OrderRefused, place, record_outcome
+from tempo.state import STATE_FILE
 
-ORDER_REF = "tempo-lifecycle"
 WAIT_SECONDS = 30.0
-POLL_SECONDS = 0.5
+SETTLE_SECONDS = 10.0
 
 
 @dataclass(frozen=True)
@@ -51,37 +57,44 @@ def _cash_by_currency(ib) -> dict[str, float]:
     return {v.currency: float(v.value) for v in ib.accountValues() if v.tag == "TotalCashValue" and v.currency != "BASE"}
 
 
-def _wait(ib, predicate, timeout: float = WAIT_SECONDS) -> bool:
-    waited = 0.0
-    while waited < timeout and not predicate():
-        ib.sleep(POLL_SECONDS)
-        waited += POLL_SECONDS
-    return predicate()
-
-
 def _commission(trade) -> float:
     return sum(f.commissionReport.commission for f in trade.fills)
 
 
-def _leg(ib, contract, action: str, qty: int):
-    trade = ib.placeOrder(contract, MarketOrder(action, qty, tif="DAY", orderRef=ORDER_REF))
-    filled = _wait(ib, trade.isDone) and trade.orderStatus.status == "Filled"
-    if not filled:
+def _leg(ib, contract, action: str, qty: int, journal: Journal, **rules):
+    trade = place(ib, contract, MarketOrder(action, qty, orderRef="tempo-lifecycle"), reason="lifecycle",
+                  journal=journal, **rules)
+    wait_until(ib, trade.isDone, WAIT_SECONDS)
+    if not trade.isDone():
         ib.cancelOrder(trade.order)
-    return trade, filled
+        wait_until(ib, trade.isDone, SETTLE_SECONDS)
+    record_outcome(journal, trade)
+    return trade, trade.orderStatus.status == "Filled"
 
 
-def run_lifecycle(ib, contract, qty: int) -> LifecycleResult:
+def run_lifecycle(ib, contract, qty: int, *, journal: Journal, limits: Limits, equity_usd: float, ref_price: float,
+                  state_path: Path = STATE_FILE, now: datetime | None = None) -> LifecycleResult:
+    rules = dict(limits=limits, equity_usd=equity_usd, ref_price=ref_price, state_path=state_path, now=now)
     cash_before = _cash_by_currency(ib)
     checks: list[Check] = []
 
-    buy, bought = _leg(ib, contract, "BUY", qty)
+    try:
+        buy, bought = _leg(ib, contract, "BUY", qty, journal, **rules)
+    except OrderRefused as exc:
+        return LifecycleResult([Check("buy", False, f"refused: {exc}")], None, {})
     buy_price = buy.orderStatus.avgFillPrice
     checks.append(Check("buy", bought, f"{qty} {contract.symbol} @ {buy_price} status={buy.orderStatus.status}"))
     if not bought:
         return LifecycleResult(checks, None, {})
+    # Let the position feed catch up so the SELL is recognised as an exit of a real position.
+    wait_until(ib, lambda: sum(p.position for p in ib.positions() if p.contract.symbol == contract.symbol) >= qty,
+               SETTLE_SECONDS)
 
-    sell, sold = _leg(ib, contract, "SELL", qty)
+    try:
+        sell, sold = _leg(ib, contract, "SELL", qty, journal, **rules)
+    except OrderRefused as exc:
+        checks.append(Check("sell", False, f"refused: {exc}; still long {qty}, run tempo.flatten"))
+        return LifecycleResult(checks, None, {})
     sell_price = sell.orderStatus.avgFillPrice
     detail = f"{qty} {contract.symbol} @ {sell_price} status={sell.orderStatus.status}"
     checks.append(Check("sell", sold, detail if sold else f"{detail}; still long {qty}, run tempo.flatten"))
@@ -106,7 +119,8 @@ def main(symbol: str, qty: int) -> int:
     try:
         contract = Stock(symbol, "SMART", "USD")
         ib.qualifyContracts(contract)
-        result = run_lifecycle(ib, contract, qty)
+        result = run_lifecycle(ib, contract, qty, journal=default_journal(), limits=default_limits(),
+                               equity_usd=equity_usd(ib), ref_price=last_close(ib, contract))
     finally:
         ib.disconnect()
     for c in result.checks:

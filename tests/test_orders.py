@@ -1,0 +1,127 @@
+import pytest
+from fakes import CLOSED_NOW, OPEN_NOW, SPY, FakeIB
+from ib_async import LimitOrder, MarketOrder
+
+from tempo.journal import Journal
+from tempo.orders import Limits, OrderRefused, place, record_outcome
+from tempo.state import set_mode
+
+LIMITS = Limits(max_position_pct=50.0)
+
+
+@pytest.fixture
+def env(tmp_path):
+    return {"journal": Journal(tmp_path / "j.jsonl"), "state_path": tmp_path / "state.json"}
+
+
+def entry(ib, env, order=None, **kw):
+    kw = {"equity_usd": 100_000.0, "ref_price": 100.0, "limits": LIMITS, "now": OPEN_NOW, "reason": "test", **env, **kw}
+    return place(ib, SPY, order or MarketOrder("BUY", 10), **kw)
+
+
+def test_entry_sets_tif_unique_ref_and_journals_intent_then_sent(env):
+    ib = FakeIB()
+    original = MarketOrder("BUY", 10, orderRef="tempo-test")
+    entry(ib, env, original)
+    sent = ib.placed[0]
+    assert sent.tif == "DAY" and sent.orderRef.startswith("tempo-test-") and sent.orderRef != "tempo-test-"
+    assert original.tif == "" and original.orderRef == "tempo-test"  # caller's order is untouched
+    assert [r["kind"] for r in env["journal"].records()] == ["intent", "sent"]
+    assert env["journal"].records()[0]["ref"] == sent.orderRef
+
+
+def test_live_account_refused_and_nothing_sent(env):
+    ib = FakeIB(account="U1234567")
+    with pytest.raises(RuntimeError, match="not a paper account"):
+        entry(ib, env)
+    assert ib.placed == [] and env["journal"].records() == []
+
+
+def test_oversize_entry_refused(env):
+    with pytest.raises(OrderRefused, match="position cap"):
+        entry(FakeIB(), env, MarketOrder("BUY", 1000))  # 100,000 notional vs 50,000 cap
+
+
+def test_entry_without_equity_or_price_fails_closed(env):
+    with pytest.raises(OrderRefused, match="equity"):
+        entry(FakeIB(), env, equity_usd=None)
+    with pytest.raises(OrderRefused, match="price"):
+        entry(FakeIB(), env, ref_price=None)
+
+
+def test_entry_refused_when_market_closed(env):
+    with pytest.raises(OrderRefused, match="market is closed"):
+        entry(FakeIB(), env, now=CLOSED_NOW)
+
+
+def test_entry_allowed_outside_rth_when_order_says_so(env):
+    entry(FakeIB(), env, LimitOrder("BUY", 1, 99.0, outsideRth=True), now=CLOSED_NOW)
+
+
+def test_reduce_only_refuses_entries_but_allows_exits(env):
+    set_mode("reduce_only", "test", env["state_path"])
+    with pytest.raises(OrderRefused, match="reduce_only"):
+        entry(FakeIB(), env)
+    ib = FakeIB(positions={"SPY": 10})
+    place(ib, SPY, MarketOrder("SELL", 10), reason="exit", now=CLOSED_NOW, limits=LIMITS, **env)  # no equity, closed, still ok
+    assert ib.held["SPY"] == 0
+
+
+def test_cover_of_a_short_is_an_exit(env):
+    set_mode("reduce_only", "test", env["state_path"])
+    ib = FakeIB(positions={"SPY": -5})
+    place(ib, SPY, MarketOrder("BUY", 5), reason="cover", limits=LIMITS, now=OPEN_NOW, **env)
+    assert ib.held["SPY"] == 0
+
+
+def test_oversized_sell_that_would_flip_the_position_is_an_entry(env):
+    set_mode("reduce_only", "test", env["state_path"])
+    with pytest.raises(OrderRefused):
+        place(FakeIB(positions={"SPY": 5}), SPY, MarketOrder("SELL", 6), reason="x", limits=LIMITS, now=OPEN_NOW, **env)
+
+
+def test_unreadable_positions_means_entry_not_exit(env):
+    set_mode("reduce_only", "test", env["state_path"])
+    ib = FakeIB(positions={"SPY": 10})
+    ib.positions_raise = True
+    with pytest.raises(OrderRefused):
+        place(ib, SPY, MarketOrder("SELL", 10), reason="x", limits=LIMITS, now=OPEN_NOW, **env)
+
+
+def test_duplicate_order_inside_window_refused(env):
+    ib = FakeIB()
+    entry(ib, env)
+    with pytest.raises(OrderRefused, match="duplicate"):
+        entry(ib, env)
+    assert len(ib.placed) == 1
+
+
+def test_stale_unresolved_intent_blocks_entries_not_exits(env):
+    env["journal"].append("intent", ref="old", symbol="SPY")
+    env["journal"]._clock = lambda: env["journal"].records()[0]["ts"] + 3600  # an hour later
+    with pytest.raises(OrderRefused, match="reconcile"):
+        entry(FakeIB(), env, MarketOrder("BUY", 1))
+    ib = FakeIB(positions={"SPY": 3})
+    place(ib, SPY, MarketOrder("SELL", 3), reason="exit", limits=LIMITS, now=OPEN_NOW, **env)
+
+
+def test_broker_error_is_journaled_and_reraised(env):
+    ib = FakeIB()
+
+    def boom(*_):
+        raise ConnectionError("down")
+
+    ib.placeOrder = boom
+    with pytest.raises(ConnectionError):
+        entry(ib, env)
+    kinds = [(r["kind"], r.get("status")) for r in env["journal"].records()]
+    assert kinds == [("intent", None), ("outcome", "error")]
+
+
+def test_record_outcome_closes_the_intent(env):
+    ib = FakeIB()
+    trade = entry(ib, env)
+    record_outcome(env["journal"], trade)
+    assert env["journal"].unresolved() == []
+    out = env["journal"].records()[-1]
+    assert out["status"] == "Filled" and out["filled"] == 10 and out["commission"] == 1.0

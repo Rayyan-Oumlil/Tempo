@@ -9,17 +9,24 @@ from __future__ import annotations
 
 import sys
 
-from dotenv import load_dotenv
-from ib_async import IB, Contract, LimitOrder, Stock
+from datetime import datetime
+from pathlib import Path
 
+from dotenv import load_dotenv
+from ib_async import Contract, LimitOrder, Stock
+
+from tempo.account import equity_usd as account_equity_usd
 from tempo.config import load_config
 from tempo.health import Check
 from tempo.ibkr import connect
+from tempo.ibutil import default_journal, default_limits, wait_until
+from tempo.journal import Journal
+from tempo.orders import Limits, place, record_outcome
+from tempo.state import STATE_FILE
 
 ORDER_REF = "tempo-roundtrip"
 PRICE_FRACTION = 0.5  # limit at half the last close: far enough below the market to never fill
 WAIT_SECONDS = 20.0
-POLL_SECONDS = 0.5
 ACTIVE = {"PreSubmitted", "Submitted"}
 CANCELLED = {"Cancelled", "ApiCancelled"}
 
@@ -28,26 +35,20 @@ def far_limit_price(last_close: float) -> float:
     return round(last_close * PRICE_FRACTION, 2)
 
 
-def _wait(ib, predicate, timeout: float = WAIT_SECONDS) -> bool:
-    waited = 0.0
-    while waited < timeout and not predicate():
-        ib.sleep(POLL_SECONDS)
-        waited += POLL_SECONDS
-    return predicate()
-
-
 def _is_open(ib, order_id: int) -> bool:
     return any(t.order.orderId == order_id for t in ib.openTrades())
 
 
-def run_roundtrip(ib, contract: Contract, last_close: float) -> list[Check]:
+def run_roundtrip(ib, contract: Contract, last_close: float, *, journal: Journal, limits: Limits, equity_usd: float,
+                  state_path: Path = STATE_FILE, now: datetime | None = None) -> list[Check]:
     price = far_limit_price(last_close)
     order = LimitOrder("BUY", 1, price, tif="DAY", orderRef=ORDER_REF)
     checks: list[Check] = []
     trade = None
     try:
-        trade = ib.placeOrder(contract, order)
-        accepted = _wait(ib, lambda: trade.orderStatus.status in ACTIVE | CANCELLED | {"Inactive", "Filled"})
+        trade = place(ib, contract, order, reason="roundtrip", journal=journal, limits=limits,
+                      equity_usd=equity_usd, ref_price=price, state_path=state_path, now=now)
+        accepted = wait_until(ib, lambda: trade.orderStatus.status in ACTIVE | CANCELLED | {"Inactive", "Filled"}, WAIT_SECONDS)
         status = trade.orderStatus.status
         checks.append(Check("place", accepted and status in ACTIVE, f"BUY 1 {contract.symbol} @ {price} -> {status}"))
         checks.append(Check("visible", _is_open(ib, trade.order.orderId), f"orderId={trade.order.orderId} in open orders"))
@@ -55,7 +56,8 @@ def run_roundtrip(ib, contract: Contract, last_close: float) -> list[Check]:
         if trade is not None and not trade.isDone():
             ib.cancelOrder(trade.order)
     if trade is not None:
-        cancelled = _wait(ib, trade.isDone)
+        cancelled = wait_until(ib, trade.isDone, WAIT_SECONDS)
+        record_outcome(journal, trade)
         status = trade.orderStatus.status
         checks.append(Check("cancel", cancelled and status in CANCELLED, f"status -> {status}"))
         checks.append(Check("clean", not _is_open(ib, trade.order.orderId) and trade.orderStatus.filled == 0,
@@ -76,7 +78,8 @@ def main(symbol: str) -> int:
         bars = ib.reqHistoricalData(contract, "", "5 D", "1 day", "TRADES", useRTH=True, formatDate=1)
         if not bars:
             raise RuntimeError(f"No daily bars for {symbol}; cannot price a safe limit order")
-        checks = run_roundtrip(ib, contract, bars[-1].close)
+        checks = run_roundtrip(ib, contract, bars[-1].close, journal=default_journal(), limits=default_limits(),
+                               equity_usd=account_equity_usd(ib))
     finally:
         ib.disconnect()
     for c in checks:
