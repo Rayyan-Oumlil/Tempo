@@ -48,3 +48,11 @@ Decision: stop adding features until what exists is solid. Method borrowed from 
 - Cancelled orders need a manual `--accept-missing`.
 - The sell-side fee rate is inferred and slippage is assumed, so backtest costs are estimates.
 - Bracket take-profit firing was not seen live (the stop firing was).
+
+### Update, same day: hardening pass part 2 (corrections and resolutions to the entry above)
+- **Resolved: "bracket take-profit firing was not seen live."** It was seen. A marketable take-profit filled at once after the entry, the stop was cancelled by OCA, and the account was flat. Live testing exposed a bug: `confirm_bracket` reported "UNPROTECTED" for that case. Fixed with two tests.
+- **New finding:** re-placing a bracket's take-profit from a second connection cancelled it (the stop survived). Bracket legs are not to be modified.
+- **Resolved: "the journal assumes one writer."** `place` and `place_bracket` now hold an OS file lock around the checks and the send. Verified across two real processes: while one held the lock, a trade attempt from another was refused cleanly and sent nothing; after release it traded normally.
+- **Resolved: calendar ends 2026-12-31.** Extended through 2027-12-31 from the NYSE Group announcement (ICE press release of 2025-12-23), read directly rather than from search summaries.
+- **Resolved: `smoke.py` and `size.py` untested.** Both are now covered (every smoke check, both `main` paths, and size's zero-share and bad-input cases).
+- **Still accepted:** a stale reference price after gaps, two oversize exits together, manual `--accept-missing` for cancelled orders, estimated backtest costs.

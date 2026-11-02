@@ -20,17 +20,14 @@ State: **flat**, no open orders.
 
 ## Next
 
-**Hardening only, by decision (2026-11-02).** No new features until these are done and the accepted limitations in [research/log.md](research/log.md) have been reviewed.
+**Hardening only, by decision (2026-11-02).** The four hardening items are done (see the update in [research/log.md](research/log.md)): bracket take-profit seen firing live, journal lock, `smoke` and `size` tested, calendar extended through 2027.
 
-Done in the hardening pass: reconcile proven live, stop firing proven live, entry cap and price check fixed, fills journaled, calendar fails closed, connection code tested, invariants written, unproven gate checker removed.
+What is still open is the accepted-limitations list in the log. Reasonable next hardening, in order:
+1. **Run the full set of live checks once more, end to end, on a fresh trading day** (lifecycle, bracket, kill, crash plus reconcile) and confirm the journal ends with nothing unresolved.
+2. **Decide on the stale reference price:** use a delayed quote when available, or accept the daily close and its 10% band.
+3. **Update the calendar from the NYSE page each December** (the code refuses entries after 2027-12-31).
 
-Still to harden, in this order:
-1. **Watch a bracket take-profit fire live** (the stop was seen firing; the take-profit was not) and confirm the OCA partner cancels and reconcile journals it.
-2. **Add a lock to the journal** (or enforce one process at a time) before anything runs unattended.
-3. **Tests for `smoke.py` and `size.py`** (0% and 42% covered) or delete what is not used.
-4. **Update the market calendar for 2027** from the NYSE calendar before 2026-12-31.
-
-Features that wait until then: daily loss limit, a real strategy, data subscription, unattended loop, scanner (see [foundations-plan.md](foundations-plan.md) and the list in git history).
+Features that wait until the owner says hardening is done: daily loss limit, a real strategy, data subscription, unattended loop, scanner (see [foundations-plan.md](foundations-plan.md)).
 
 ## Gate before real money
 

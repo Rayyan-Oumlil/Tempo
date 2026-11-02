@@ -19,6 +19,10 @@ Sources: IBKR overnight-trading disclosure and news ([IBKR](https://www.interact
 - **TSX:** 09:30 to 16:00 ET, but IBKR may block API orders on Canadian-listed stocks for Canadian residents (per an old note).
 - **Gateway:** logs out at 23:45 by default; set Auto restart in Configure, Lock and Exit for overnight work.
 
+## Holidays
+
+The code (`tempo/hours.py`) covers through 2027-12-31 and was checked against the NYSE Group announcement (ICE press release, 2025-12-23). 2027 closures: Jan 1, Jan 18, Feb 15, Mar 26, May 31, Jun 18 (Juneteenth observed), Jul 5 (Independence Day observed), Sep 6, Nov 25, Dec 24 (Christmas observed). Early close at 13:00: Fri Nov 26, 2027. After 2027-12-31 new entries are refused until the calendar is updated.
+
 ## Holidays left in 2026
 
 ```
