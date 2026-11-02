@@ -19,6 +19,8 @@ Day / swing / active trading on an **Interactive Brokers paper account**. Python
 | `python -m tempo.smoke [SYMBOL]` | Read-only API tests: qualify, contract details, snapshot, history start, daily bars | no |
 | `python -m tempo.size SYMBOL STOP` | Shares allowed by `rules.json` for a long trade, using your equity in USD | no |
 | `IBKR_READONLY=0 python -m tempo.roundtrip [SYMBOL]` | Places a far-below-market limit buy, watches it, cancels it | yes (cannot fill) |
+| `IBKR_READONLY=0 python -m tempo.lifecycle [SYMBOL] [QTY]` | Market buy, confirm, market sell, report P&L and cash by currency (regular hours) | yes (fills) |
+| `IBKR_READONLY=0 python -m tempo.flatten [SYMBOL]` | Market-sell open long positions | yes (fills) |
 
 On Windows PowerShell set the variable first: `$env:IBKR_READONLY=0`. Tests: `pytest`.
 

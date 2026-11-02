@@ -83,7 +83,7 @@ def t_what_if(ib: IB, symbol: str) -> str:
     """Asks IB for commission + margin impact of a 1-share buy. Nothing is sent to the market."""
     contract = _stock(symbol)
     ib.qualifyContracts(contract)
-    state = ib.whatIfOrder(contract, LimitOrder("BUY", 1, 1.00))
+    state = ib.whatIfOrder(contract, LimitOrder("BUY", 1, 1.00, tif="DAY"))
     return f"commission={state.commission} {state.commissionCurrency} initMarginChange={state.initMarginChange}"
 
 
