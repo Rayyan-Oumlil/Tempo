@@ -172,3 +172,49 @@ def test_place_refuses_and_sends_nothing_while_another_process_holds_the_journal
         with pytest.raises(JournalLocked):
             entry(ib, {**env, "journal": Journal(env["journal"].path, lock_timeout=0.2)})
     assert ib.placed == []
+
+
+# --- an exit must fit in what is NOT already committed to other resting exits (found in the limitations review) ---
+
+def test_a_second_resting_exit_that_would_flip_the_position_is_not_an_exit(env):
+    set_mode("reduce_only", "t", env["state_path"])
+    ib = FakeIB(positions={"SPY": 5}, fill=False)
+    first = place(ib, SPY, LimitOrder("SELL", 5, 150.0), reason="exit", limits=LIMITS, now=OPEN_NOW, **env)  # rests
+    assert not first.isDone()
+    with pytest.raises(OrderRefused, match="reduce_only"):
+        place(ib, SPY, LimitOrder("SELL", 1, 151.0), reason="exit", limits=LIMITS, now=OPEN_NOW, **env)
+    assert len(ib.placed) == 1
+
+
+def test_exits_that_fit_together_are_both_allowed_and_cancelling_frees_the_room(env):
+    set_mode("reduce_only", "t", env["state_path"])
+    ib = FakeIB(positions={"SPY": 5}, fill=False)
+    first = place(ib, SPY, LimitOrder("SELL", 3, 150.0), reason="exit", limits=LIMITS, now=OPEN_NOW, **env)
+    place(ib, SPY, LimitOrder("SELL", 2, 151.0), reason="exit", limits=LIMITS, now=OPEN_NOW, **env)   # 3 + 2 = 5 fits
+    with pytest.raises(OrderRefused):
+        place(ib, SPY, LimitOrder("SELL", 1, 152.0), reason="exit", limits=LIMITS, now=OPEN_NOW, **env)
+    ib.cancelOrder(first.order)
+    place(ib, SPY, LimitOrder("SELL", 3, 153.0), reason="exit", limits=LIMITS, now=OPEN_NOW, **env)   # room is back
+
+
+def test_resting_orders_on_the_other_side_do_not_use_up_exit_room(env):
+    set_mode("reduce_only", "t", env["state_path"])
+    ib = FakeIB(positions={"SPY": 5}, fill=False)
+    ib.placeOrder(SPY, LimitOrder("BUY", 100, 50.0))        # a resting BUY says nothing about selling
+    place(ib, SPY, LimitOrder("SELL", 5, 150.0), reason="exit", limits=LIMITS, now=OPEN_NOW, **env)
+
+
+def test_covering_a_short_is_limited_the_same_way(env):
+    set_mode("reduce_only", "t", env["state_path"])
+    ib = FakeIB(positions={"SPY": -4}, fill=False)
+    place(ib, SPY, LimitOrder("BUY", 4, 50.0), reason="cover", limits=LIMITS, now=OPEN_NOW, **env)
+    with pytest.raises(OrderRefused):
+        place(ib, SPY, LimitOrder("BUY", 1, 49.0), reason="cover", limits=LIMITS, now=OPEN_NOW, **env)
+
+
+def test_unreadable_open_orders_means_not_an_exit(env):
+    set_mode("reduce_only", "t", env["state_path"])
+    ib = FakeIB(positions={"SPY": 5})
+    ib.reqAllOpenOrders = lambda: (_ for _ in ()).throw(RuntimeError("down"))
+    with pytest.raises(OrderRefused):
+        place(ib, SPY, MarketOrder("SELL", 5), reason="exit", limits=LIMITS, now=OPEN_NOW, **env)

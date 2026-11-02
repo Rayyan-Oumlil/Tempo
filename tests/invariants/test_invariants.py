@@ -3,13 +3,13 @@ from pathlib import Path
 
 import pytest
 from fakes import OPEN_NOW, SPY, FakeIB
-from ib_async import MarketOrder
+from ib_async import LimitOrder, MarketOrder
 
 from tempo.bracket import place_bracket, plan_bracket
 from tempo.flatten import flatten_positions
 from tempo.journal import Journal
 from tempo.kill import kill
-from tempo.orders import Limits, place
+from tempo.orders import Limits, is_exit, place
 from tempo.risk import RiskRules
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -76,3 +76,15 @@ def test_5b_kill_never_leaves_a_position_on_the_other_side(env):
     ib = FakeIB(positions={"SPY": 4, "QQQ": -3})
     kill(ib, now=OPEN_NOW, **env)
     assert all(q == 0 for q in ib.held.values())
+
+
+@pytest.mark.parametrize("held", [-6, -1, 0, 1, 6])
+@pytest.mark.parametrize("committed", [0, 2, 6])
+@pytest.mark.parametrize("qty", [1, 2, 4, 6, 7])
+@pytest.mark.parametrize("action", ["BUY", "SELL"])
+def test_6_an_order_is_an_exit_only_if_it_fits_in_the_uncommitted_part_of_the_position(held, committed, qty, action):
+    ib = FakeIB(positions={"SPY": held}, fill=False)
+    if committed:
+        ib.placeOrder(SPY, LimitOrder(action, committed, 1.0))  # resting order on the same side
+    room = (held if action == "SELL" else -held) - committed
+    assert is_exit(ib, SPY, MarketOrder(action, qty)) == (room > 0 and qty <= room)

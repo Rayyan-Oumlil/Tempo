@@ -38,14 +38,22 @@ class Limits:
 
 
 def is_exit(ib, contract, order) -> bool:
+    """True only if the order reduces a live position AND fits in what other resting orders have not already claimed.
+
+    Example: long 5 with a resting SELL 5. A second SELL 1 is not an exit, because both could fill and flip the
+    account short. Orders from every client id count (reqAllOpenOrders). If positions or open orders cannot be
+    read, the answer is False (treated as an entry, which is the stricter path).
+    """
     try:
         held = sum(p.position for p in ib.positions() if _same(p.contract, contract))
-    except Exception:  # noqa: BLE001 - unreadable positions must not be treated as an exit
+        committed = sum(t.order.totalQuantity - t.orderStatus.filled for t in ib.reqAllOpenOrders()
+                        if _same(t.contract, contract) and t.order.action == order.action)
+    except Exception:  # noqa: BLE001 - unreadable state must not be treated as an exit
         return False
     qty = order.totalQuantity
     if order.action == "SELL":
-        return held > 0 and qty <= held
-    return held < 0 and qty <= -held
+        return held > 0 and qty <= held - committed
+    return held < 0 and qty <= -held - committed
 
 
 def _same(a, b) -> bool:
