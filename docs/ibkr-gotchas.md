@@ -90,6 +90,7 @@ A paper account only simulates fees. Check the real fee schedule before going li
 - **Pacing:** three identical daily-bar requests in a row did not trigger a pacing error.
 - **Canada:** `Stock("RY","TSE","CAD")` and `XIU` give 162 "No market data permissions for TSE". `Stock("SHOP","SMART","CAD")` returned daily bars, so route Canadian stocks through SMART.
 - **Not available:** 5-second real-time bars (420, no permission for AMEX), market depth (10092), fundamentals (10358). The news provider list loads; news content was not tested.
+- **`reqPnL` first callback can be STALE.** Subscribing returned -11.21 at 0.06 s and the real daily P&L, -151.55, about a second later (later subscriptions got one correct callback at about 1 s). `ib.reqPnL` also starts as NaN. Tempo reads the figure only after a 2 s settle (`PNL_SETTLE_SECONDS`), so each new entry pays about 2 s. Verified live: three reads agreed with IBKR at 0.0602%.
 - **Works:** option chain parameters (64 chains for SPY), `reqPnL`, `reqExecutions` (today's fills), `reqCompletedOrders`, 96 account summary values.
 - **Scanner:** works without a subscription for `STK.US.MAJOR` (`TOP_PERC_GAIN`, `MOST_ACTIVE`, `HOT_BY_VOLUME`, 8 rows in 0.2 to 2.4 s). The gainers are micro-caps (INO, RBNE, CLRO), so add price/volume filters before trusting them. `STK.CA.TSE` gives 162 "not configured". A 162 "scanner subscription cancelled" follows every scan and is harmless.
 

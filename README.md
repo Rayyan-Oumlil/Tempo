@@ -30,13 +30,13 @@ Day / swing / active trading on an **Interactive Brokers paper account**. Python
 
 On Windows PowerShell set the variable first: `$env:IBKR_READONLY=0`.
 
-**Tests:** `pytest` runs the fast offline suite. `TEMPO_LIVE=1 pytest tests/live` (PowerShell: `$env:TEMPO_LIVE=1; pytest tests/live`) runs five checks against the paper account during regular hours: lifecycle, bracket plus kill, take-profit exit, kill on a long and a short, and crash recovery. It places real paper orders and leaves the account flat.
+**Tests:** `pytest` runs the fast offline suite. `TEMPO_LIVE=1 pytest tests/live` (PowerShell: `$env:TEMPO_LIVE=1; pytest tests/live`) runs five checks against the paper account during regular hours: lifecycle, bracket plus kill, take-profit exit, kill on a long and a short, and crash recovery. It places real paper orders and leaves the account flat. Tests that need the regular session skip themselves outside it.
 
 ## How orders are kept safe
-Every order goes through `tempo/orders.py` (`place`); nothing else calls `ib.placeOrder`. It refuses non-paper accounts and duplicates, sets `tif`, tags the order with a unique `orderRef`, and writes the intent to `journal/journal.jsonl` **before** sending. New entries also need: mode `normal`, regular hours, a known equity and price, size under the position cap, and no stale unresolved journal entries. Orders that reduce a live position are never refused by those limits.
+Every order goes through `tempo/orders.py` (`place`); nothing else calls `ib.placeOrder`. It refuses non-paper accounts and duplicates, sets `tif`, tags the order with a unique `orderRef`, and writes the intent to `journal/journal.jsonl` **before** sending. New entries also need: mode `normal`, regular hours, a known equity and price, size under the position cap, the account not down more than `max_daily_loss_pct` today, and no stale unresolved journal entries. Orders that reduce a live position are never refused by those limits.
 
 ## Rules
-`rules.json` holds the risk rules (percent of equity): `risk_per_trade_pct` is the most you lose if the stop hits, `max_position_pct` caps one position's value (and every entry). Sizing takes the smaller result.
+`rules.json` holds the risk rules (percent of equity): `risk_per_trade_pct` is the most you lose if the stop hits, `max_position_pct` caps one position's value (and every entry), `max_daily_loss_pct` stops new entries once the account is that far down today (exits are never blocked; if IBKR's daily P&L cannot be read, entries are refused). Sizing takes the smaller of the first two.
 
 ## Docs
 See [docs/](docs/README.md): IBKR gotchas, market hours, the foundations plan, roadmap, research log, and research notes.
