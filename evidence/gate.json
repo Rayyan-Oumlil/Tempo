@@ -1,0 +1,21 @@
+{
+  "_note": "Pre-registered 2026-11-02, BEFORE any strategy result existed. Do not edit to fit a result. To change a criterion, add a dated entry to docs/research/log.md saying why, then edit.",
+  "paper": {
+    "min_round_trips": 100,
+    "min_trading_days": 60,
+    "min_net_pnl_usd": 0,
+    "max_process_error_share": 0.05
+  },
+  "backtest": {
+    "min_years": 10,
+    "min_shuffle_beat_pct": 95,
+    "max_variants_tried": 20
+  },
+  "checklist": [
+    "kill_switch_tested",
+    "daily_loss_limit_built",
+    "realtime_data_for_two_weeks",
+    "employer_compliance_checked",
+    "study_permit_and_tax_rules_checked"
+  ]
+}
