@@ -25,7 +25,7 @@ State: **flat**, no open orders.
 What remains is small. In order:
 1. **Run `TEMPO_LIVE=1 pytest tests/live` after every change to order code**, and once on each new trading day before trusting the tools.
 2. **Update the calendar from the NYSE page each December** (the code refuses entries after 2027-12-31).
-3. **Review the accepted limitations** in [research/log.md](research/log.md) before building anything on top: two oversize exits together, manual `--accept-missing` for cancelled orders, estimated backtest costs.
+3. **Accepted limitations are reviewed** (see the last entry in [research/log.md](research/log.md)): the oversize-exits case is fixed; manual `--accept-missing` for cancelled orders stays because the broker offers no safe key; backtest costs remain estimates.
 
 Features that wait until the owner says hardening is done: daily loss limit, a real strategy, data subscription, unattended loop, scanner (see [foundations-plan.md](foundations-plan.md)).
 
