@@ -66,30 +66,40 @@ def place_bracket(ib, contract, plan: BracketPlan, *, journal: Journal, limits: 
                   state_path: Path = STATE_FILE, now: datetime | None = None) -> BracketLegs:
     accounts = ib.managedAccounts()
     assert_paper(accounts[0] if accounts else "none")
-    parent = MarketOrder("BUY", plan.qty, orderRef="tempo-bracket", transmit=False)
-    _check_entry(parent, journal=journal, state_path=state_path, limits=limits,
-                 equity_usd=equity_usd, ref_price=plan.entry, now=now)
+    with journal.lock():
+        parent = MarketOrder("BUY", plan.qty, orderRef="tempo-bracket", transmit=False)
+        _check_entry(parent, journal=journal, state_path=state_path, limits=limits,
+                     equity_usd=equity_usd, ref_price=plan.entry, now=now)
 
-    oca = f"tempo-oca-{uuid.uuid4().hex[:10]}"
-    parent.orderId = ib.client.getReqId()
-    children = []
-    if plan.take_profit is not None:
-        children.append(LimitOrder("SELL", plan.qty, plan.take_profit, tif="GTC", orderRef="tempo-bracket-tp",
-                                   parentId=parent.orderId, ocaGroup=oca, ocaType=1, transmit=False))
-    children.append(StopOrder("SELL", plan.qty, plan.stop, tif="GTC", orderRef="tempo-bracket-stop",
-                              parentId=parent.orderId, ocaGroup=oca, ocaType=1, transmit=True))
-    for child in children:
-        child.orderId = ib.client.getReqId()
+        oca = f"tempo-oca-{uuid.uuid4().hex[:10]}"
+        parent.orderId = ib.client.getReqId()
+        children = []
+        if plan.take_profit is not None:
+            children.append(LimitOrder("SELL", plan.qty, plan.take_profit, tif="GTC", orderRef="tempo-bracket-tp",
+                                       parentId=parent.orderId, ocaGroup=oca, ocaType=1, transmit=False))
+        children.append(StopOrder("SELL", plan.qty, plan.stop, tif="GTC", orderRef="tempo-bracket-stop",
+                                  parentId=parent.orderId, ocaGroup=oca, ocaType=1, transmit=True))
+        for child in children:
+            child.orderId = ib.client.getReqId()
 
-    sent = []
-    try:
-        for order, reason in [(parent, "bracket-entry")] + [(c, f"bracket-{c.orderRef.split('-')[-1]}") for c in children]:
-            sent.append(dispatch(ib, contract, order, reason=reason, journal=journal, limits=limits, exit_order=False))
-    except Exception:
-        for trade in sent:  # nothing was transmitted until the last leg, so cancel the whole set together
-            ib.cancelOrder(trade.order)
-        raise
-    return BracketLegs(parent=sent[0], stop=sent[-1], take_profit=sent[1] if plan.take_profit is not None else None)
+        sent = []
+        try:
+            for order, reason in [(parent, "bracket-entry")] + [(c, f"bracket-{c.orderRef.split('-')[-1]}") for c in children]:
+                sent.append(dispatch(ib, contract, order, reason=reason, journal=journal, limits=limits, exit_order=False))
+        except Exception:
+            for trade in sent:  # nothing was transmitted until the last leg, so cancel the whole set together
+                ib.cancelOrder(trade.order)
+            raise
+        return BracketLegs(parent=sent[0], stop=sent[-1], take_profit=sent[1] if plan.take_profit is not None else None)
+
+
+def _exit_leg(legs: BracketLegs):
+    """(name, trade) of a child leg that has already filled, which means the position is closed; else None."""
+    if legs.take_profit is not None and legs.take_profit.orderStatus.status == "Filled":
+        return "take-profit", legs.take_profit
+    if legs.stop.orderStatus.status == "Filled":
+        return "stop", legs.stop
+    return None
 
 
 def confirm_bracket(ib, legs: BracketLegs, *, journal: Journal, limits: Limits, state_path: Path = STATE_FILE,
@@ -112,7 +122,14 @@ def confirm_bracket(ib, legs: BracketLegs, *, journal: Journal, limits: Limits, 
 
     record_outcome(journal, legs.parent)
     checks = [Check("entry", True, f"{legs.parent.order.totalQuantity:g} {symbol} @ {legs.parent.orderStatus.avgFillPrice}")]
-    wait_until(ib, lambda: legs.stop.orderStatus.status in RESTING, SETTLE_SECONDS)
+    wait_until(ib, lambda: legs.stop.orderStatus.status in RESTING or _exit_leg(legs) is not None, SETTLE_SECONDS)
+    closed_by = _exit_leg(legs)
+    if closed_by is not None:  # seen live: a marketable take-profit fills at once and cancels the stop (OCA)
+        wait_until(ib, lambda: all(t.isDone() for t in all_legs[1:]), SETTLE_SECONDS)
+        for t in all_legs[1:]:
+            record_outcome(journal, t)
+        name, leg = closed_by
+        return checks + [Check("exit", True, f"{name} already filled @ {leg.orderStatus.avgFillPrice}; position closed")]
     protected = legs.stop.orderStatus.status in RESTING
     if protected:
         for t in all_legs[1:]:  # resting GTC legs are known to the broker; their fate is read from executions later

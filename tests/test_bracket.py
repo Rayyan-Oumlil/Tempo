@@ -120,3 +120,24 @@ def test_confirm_flattens_when_the_stop_is_not_resting(env):
     checks = confirm_bracket(ib, legs, journal=env["journal"], limits=LIMITS, state_path=env["state_path"], now=OPEN_NOW)
     assert any("UNPROTECTED" in c.detail for c in checks)
     assert ib.held["SPY"] == 0  # the position was closed
+
+
+# --- found live 2026-11-02: a take-profit that fires at once cancels the stop (OCA); that is not "unprotected" ---
+
+def test_confirm_treats_an_already_filled_take_profit_as_a_closed_position_not_an_alarm(env):
+    ib = FakeIB(fill_seq=[True, True, False])   # entry fills, then the marketable take-profit fills
+    legs = placed(ib, env)
+    legs.stop.orderStatus.status = "Cancelled"  # the OCA partner was cancelled by the take-profit fill
+    checks = confirm_bracket(ib, legs, journal=env["journal"], limits=LIMITS, state_path=env["state_path"], now=OPEN_NOW)
+    assert all(c.ok for c in checks) and [c.name for c in checks] == ["entry", "exit"]
+    assert "take-profit" in checks[1].detail
+    assert len(ib.placed) == 3                  # no emergency flatten order was sent
+    assert env["journal"].unresolved() == []
+
+
+def test_confirm_treats_an_immediate_stop_out_as_a_closed_position_too(env):
+    ib = FakeIB(fill_seq=[True, False, True])
+    legs = placed(ib, env)
+    legs.take_profit.orderStatus.status = "Cancelled"
+    checks = confirm_bracket(ib, legs, journal=env["journal"], limits=LIMITS, state_path=env["state_path"], now=OPEN_NOW)
+    assert all(c.ok for c in checks) and "stop" in checks[1].detail and len(ib.placed) == 3

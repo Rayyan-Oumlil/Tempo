@@ -121,11 +121,12 @@ def place(ib, contract, order, *, reason: str, journal: Journal, limits: Limits,
           ref_price: float | None = None, now: datetime | None = None, state_path: Path = STATE_FILE):
     accounts = ib.managedAccounts()
     assert_paper(accounts[0] if accounts else "none")
-    exit_order = is_exit(ib, contract, order)
-    if not exit_order:
-        _check_entry(order, journal=journal, state_path=state_path, limits=limits,
-                     equity_usd=equity_usd, ref_price=ref_price, now=now)
-    return dispatch(ib, contract, order, reason=reason, journal=journal, limits=limits, exit_order=exit_order)
+    with journal.lock():  # the checks and the send are one step: no other Tempo process can slip in between
+        exit_order = is_exit(ib, contract, order)
+        if not exit_order:
+            _check_entry(order, journal=journal, state_path=state_path, limits=limits,
+                         equity_usd=equity_usd, ref_price=ref_price, now=now)
+        return dispatch(ib, contract, order, reason=reason, journal=journal, limits=limits, exit_order=exit_order)
 
 
 def record_outcome(journal: Journal, trade) -> dict:

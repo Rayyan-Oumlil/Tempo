@@ -129,7 +129,7 @@ def test_record_outcome_closes_the_intent(env):
 
 def test_entry_refused_once_the_market_calendar_has_expired(env):
     from datetime import datetime, timezone
-    later = datetime(2027, 1, 4, 16, 0, tzinfo=timezone.utc)
+    later = datetime(2028, 1, 4, 16, 0, tzinfo=timezone.utc)
     with pytest.raises(OrderRefused, match="calendar"):
         entry(FakeIB(), env, now=later)
     entry(FakeIB(), env, LimitOrder("BUY", 1, 99.0, outsideRth=True), now=later)  # does not depend on the calendar
@@ -162,3 +162,13 @@ def test_cap_is_checked_at_a_stop_orders_trigger_price(env):
     from ib_async import StopOrder
     with pytest.raises(OrderRefused, match="position cap"):
         entry(FakeIB(), env, StopOrder("BUY", 450, 120.0))                    # 54,000 at the stop, 45,000 at the reference
+
+
+def test_place_refuses_and_sends_nothing_while_another_process_holds_the_journal(env):
+    from tempo.journal import JournalLocked
+    ib = FakeIB()
+    other = Journal(env["journal"].path)
+    with other.lock():
+        with pytest.raises(JournalLocked):
+            entry(ib, {**env, "journal": Journal(env["journal"].path, lock_timeout=0.2)})
+    assert ib.placed == []

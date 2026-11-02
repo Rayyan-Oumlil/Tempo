@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from tempo.journal import Journal
+from tempo.journal import Journal, JournalLocked
 from tempo.state import get_mode, set_mode
 
 
@@ -59,3 +59,23 @@ def test_unreadable_or_unknown_state_fails_closed(tmp_path):
 def test_set_mode_rejects_unknown_mode(tmp_path):
     with pytest.raises(ValueError):
         set_mode("halt", "x", tmp_path / "s.json")
+
+
+def test_a_second_holder_cannot_take_the_lock_until_it_is_released(tmp_path):
+    path = tmp_path / "j.jsonl"
+    first, second = Journal(path), Journal(path)
+    with first.lock():
+        with pytest.raises(JournalLocked):
+            with second.lock(timeout=0.2):
+                pass
+    with second.lock(timeout=0.2):  # free again after release
+        pass
+
+
+def test_the_lock_is_released_even_if_the_work_inside_fails(tmp_path):
+    path = tmp_path / "j.jsonl"
+    with pytest.raises(ValueError):
+        with Journal(path).lock():
+            raise ValueError("boom")
+    with Journal(path).lock(timeout=0.2):
+        pass
