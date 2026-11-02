@@ -46,7 +46,7 @@ Paper account only. Work in order; each phase stands on the one before.
 ## Phase 5: the evidence harness
 
 **Build:** `evidence/gate.yaml`, a tiny backtester, and `docs/research/log.md`.
-- **Pre-register the gate before any backtest** (`evidence/gate.json`, checked by `tempo.gate`): minimum round trips, net positive after the measured costs, share of trades tainted by bot errors, a stated number of variants tried, and "no live-money talk on delayed data". Adapted from `gate_criteria.yaml`; never edited between gates.
+- **Pre-register the gate before any backtest** (`evidence/gate.json`; checked by hand until paper trading produces numbers to check, see hardening notes): minimum round trips, net positive after the measured costs, share of trades tainted by bot errors, a stated number of variants tried, and "no live-money talk on delayed data". Adapted from `gate_criteria.yaml`; never edited between gates.
 - **Backtester on free daily bars** (20 years), with the measured costs: 0.005 USD per share, 1.00 USD minimum, sell-side fee about 20.6 USD per million, slippage assumed. Signals use only data available at the time.
 - **Negative control:** run the same pipeline on shuffled or random data. A "good" result on noise means the pipeline is wrong.
 - **Research log:** append-only, dated; corrections go underneath, never over the original (mmr).

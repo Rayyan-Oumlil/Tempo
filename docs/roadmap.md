@@ -20,19 +20,21 @@ State: **flat**, no open orders.
 
 ## Next
 
-Foundations are built ([foundations-plan.md](foundations-plan.md)). What is left before any strategy deserves paper trading:
+**Hardening only, by decision (2026-11-02).** No new features until these are done and the accepted limitations in [research/log.md](research/log.md) have been reviewed.
 
-1. **Daily loss limit** that blocks new entries only (the gate checklist needs it). It plugs into `orders._check_entry`.
-2. **A real strategy idea, judged by the harness:** write the idea and the number of variants down first, run `tempo.evidence`, record the result in [research/log.md](research/log.md). The first run (SPY, SMA 200) earned less than buy and hold with a smaller drawdown; it is a baseline, not a finding.
-3. **Paper-trade the survivor** for the gate's minimum (100 round trips and 60 trading days), journal every trade, review in R-multiples.
-4. **Data decision:** only if a strategy needs live intraday data (quotes are about 15 minutes delayed without a subscription). Verify price and API availability at purchase; TSX data is separate.
-5. **Cheap backstops:** dead-man's ping, order-rate ceiling that trips `reduce_only`, price plausibility check, early-close calendar for 2027, no API jobs 23:30 to 01:00 ET.
-6. **Unattended loop:** scheduler, logging, Docker Gateway (`AUTO_RESTART_TIME`, 2FA handling), Telegram alerts. Only after 1 to 3.
-7. **Scanner with filters** (works without a subscription; raw gainers are micro-caps).
+Done in the hardening pass: reconcile proven live, stop firing proven live, entry cap and price check fixed, fills journaled, calendar fails closed, connection code tested, invariants written, unproven gate checker removed.
+
+Still to harden, in this order:
+1. **Watch a bracket take-profit fire live** (the stop was seen firing; the take-profit was not) and confirm the OCA partner cancels and reconcile journals it.
+2. **Add a lock to the journal** (or enforce one process at a time) before anything runs unattended.
+3. **Tests for `smoke.py` and `size.py`** (0% and 42% covered) or delete what is not used.
+4. **Update the market calendar for 2027** from the NYSE calendar before 2026-12-31.
+
+Features that wait until then: daily loss limit, a real strategy, data subscription, unattended loop, scanner (see [foundations-plan.md](foundations-plan.md) and the list in git history).
 
 ## Gate before real money
 
-The numbers are pre-registered in `evidence/gate.json`; check them with `python -m tempo.gate`.
+The numbers are pre-registered in `evidence/gate.json` and are checked by hand. An automatic checker was removed on 2026-11-02 because nothing produced the numbers it would check; build one when paper trading exists.
 
 - Two to three months of paper results that stay positive after commissions and conversion costs, and match the backtest.
 - The kill switch and daily loss limit tested.

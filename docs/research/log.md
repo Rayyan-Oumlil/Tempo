@@ -27,3 +27,24 @@ Negative control (200 shuffled-order versions of the same daily returns): real S
 - Costs were 2,666 USD on 107 orders against 15 USD for one order, so costs matter for anything that trades often.
 - Beating 99% of shuffles is **not** evidence of an edge. Shuffling also removes volatility clustering, and a trend rule benefits from avoiding the big crashes without predicting anything. The gate asks for 95+ as a necessary check, not a sufficient one.
 - This is one instrument over one history. Nothing here is a reason to trade money. The harness exists so the next idea is judged by the same rules before it is believed.
+
+## 2026-11-02: hardening pass (no new features)
+
+Decision: stop adding features until what exists is solid. Method borrowed from `reference/mmr/tests/invariants` (a small, literal spec that is never weakened to make code pass) and from the reference audit.
+
+**Proven live on the paper account**
+- Reconcile, from a fresh client id after a simulated crash (three orders placed, no outcomes recorded, process killed): the working order was found among open orders, the filled order was found in executions, and the cancelled order was correctly left unresolved. All matched by `orderRef`.
+- A stop order fires and fills at IBKR, and its execution carries our tag. Reconcile then journaled 8 fills once (a second run added none).
+- The hardened order checks did not break the real tools: roundtrip (a far-below-market limit is still allowed), lifecycle, bracket, kill.
+
+**Bug found and fixed:** the entry size cap used the caller's reference price, not the order's own price. A limit buy priced far above the reference would have been checked at a fraction of its real size. The cap now uses the highest price the order could pay (limit or stop), and a limit more than 10% on the wrong side of the reference price is refused as a likely fat-finger (an idea from `ibkr-algo-trader`'s review).
+
+**Other changes:** reconcile now journals every execution of our orders once, keyed by `execId`, including fills of orders already resolved (a bracket stop or take-profit that fires later). The market calendar fails closed: after 2026-12-31 entries are refused until `tempo/hours.py` is updated. The gate checker (`gate.py`) was removed: nothing produced the numbers it checked. The pre-registered criteria stay in `evidence/gate.json`. Connection and account code, previously 33% and 85% covered, now have tests, and `tests/invariants/` holds six literal invariants.
+
+**Accepted limitations (written down, not fixed)**
+- The journal assumes one writer at a time; there is no file lock.
+- The reference price is the last daily close; after a big gap the 10% band can refuse a legitimate order.
+- Two resting exit orders that are each no larger than the position can together exceed it. Bracket OCA pairs are the intended use, and `kill` and `flatten` cancel before they sell.
+- Cancelled orders need a manual `--accept-missing`.
+- The sell-side fee rate is inferred and slippage is assumed, so backtest costs are estimates.
+- Bracket take-profit firing was not seen live (the stop firing was).

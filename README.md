@@ -22,7 +22,6 @@ Day / swing / active trading on an **Interactive Brokers paper account**. Python
 | `python -m tempo.state [normal\|reduce_only] [why]` | Show or set the trading mode | no |
 | `python -m tempo.data SYMBOL [YEARS]` | Download daily bars to `data/` | no |
 | `python -m tempo.evidence SYMBOL [SMA_WINDOW]` | Backtest baselines and a trend rule on saved bars, with a shuffled-data control | no |
-| `python -m tempo.gate metrics.json` | Check results against the pre-registered criteria in `evidence/gate.json` | no |
 | `IBKR_READONLY=0 python -m tempo.roundtrip [SYMBOL]` | Places a far-below-market limit buy, watches it, cancels it | yes (cannot fill) |
 | `IBKR_READONLY=0 python -m tempo.lifecycle [SYMBOL] [QTY]` | Market buy, confirm, market sell, report P&L and cash (regular hours) | yes (fills) |
 | `IBKR_READONLY=0 python -m tempo.bracket SYMBOL STOP [TP] [QTY]` | Market buy with a stop (and optional take-profit) resting at IBKR | yes (fills) |
