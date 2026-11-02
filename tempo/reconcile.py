@@ -9,6 +9,14 @@ For every unresolved intent (matched by its unique orderRef):
                                    or filled on an earlier day (executions only cover today). Check by hand, then
                                    run with --accept-missing to clear it.
 If the broker cannot be read, nothing is resolved.
+
+It also journals each execution of our orders once (kind `fill`, keyed by execId), including fills of orders
+that were already resolved, such as a bracket stop or take-profit that fires later. Commission is not recorded:
+IBKR reports it as 0.0 at first and fills it in later.
+
+Verified live 2026-11-02 from a fresh client id: a working order, a filled order and a cancelled order, all
+matched (or flagged) by orderRef. reqCompletedOrders returns an EMPTY orderRef, so cancelled orders cannot be
+matched automatically and need --accept-missing.
 """
 from __future__ import annotations
 
@@ -24,16 +32,18 @@ from tempo.journal import Journal
 
 
 def reconcile(ib, journal: Journal, *, resolve_missing: bool = False) -> list[Check]:
-    pending = journal.unresolved()
-    if not pending:
+    refs = {r["ref"] for r in journal.records() if r.get("kind") == "intent"}
+    if not refs:
         return [Check("journal", True, "no unresolved orders")]
+    pending = journal.unresolved()
     try:
         working = {t.order.orderRef for t in ib.reqAllOpenOrders()}
-        shares: dict[str, float] = {}
-        for f in ib.reqExecutions():
-            shares[f.execution.orderRef] = shares.get(f.execution.orderRef, 0.0) + f.execution.shares
+        executions = list(ib.reqExecutions())
     except Exception as exc:  # noqa: BLE001 - any failure to read the broker means we cannot decide
         return [Check("journal", False, f"{len(pending)} unresolved; could not read the broker ({exc!r})")]
+    shares: dict[str, float] = {}
+    for f in executions:
+        shares[f.execution.orderRef] = shares.get(f.execution.orderRef, 0.0) + f.execution.shares
 
     checks = []
     for intent in pending:
@@ -50,7 +60,23 @@ def reconcile(ib, journal: Journal, *, resolve_missing: bool = False) -> list[Ch
             checks.append(Check("resolved", True, f"{label}: not found, accepted as not filled"))
         else:
             checks.append(Check("unresolved", False, f"{label}: not found at the broker; verify, then --accept-missing"))
-    return checks
+    new_fills = _record_new_fills(journal, executions, refs)
+    if new_fills:
+        checks.append(Check("fills", True, f"{new_fills} new fill(s) recorded in the journal"))
+    return checks or [Check("journal", True, "no unresolved orders")]
+
+
+def _record_new_fills(journal: Journal, executions, refs: set[str]) -> int:
+    """Journal every broker execution of one of our orders exactly once (keyed by exec_id)."""
+    seen = {r["exec_id"] for r in journal.records() if r.get("kind") == "fill"}
+    added = 0
+    for f in executions:
+        e = f.execution
+        if e.orderRef in refs and e.execId not in seen:
+            journal.append("fill", ref=e.orderRef, exec_id=e.execId, shares=e.shares, price=e.price, side=e.side)
+            seen.add(e.execId)
+            added += 1
+    return added
 
 
 def main(accept_missing: bool) -> int:

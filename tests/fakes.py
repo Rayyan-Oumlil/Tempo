@@ -86,8 +86,9 @@ class FakeIB:
                 t.orderStatus.status = "Cancelled"
 
     def reqExecutions(self):
-        return [NS(execution=NS(orderRef=t.order.orderRef, shares=t.orderStatus.filled), commissionReport=None)
-                for t in self.trades if t.orderStatus.filled]
+        return [NS(execution=NS(orderRef=t.order.orderRef, shares=t.orderStatus.filled, price=t.orderStatus.avgFillPrice,
+                                side=t.order.action, execId=f"exec-{i}"), commissionReport=None)
+                for i, t in enumerate(self.trades) if t.orderStatus.filled]
 
     def accountValues(self):
         return [NS(tag="TotalCashValue", currency=c, value=str(v)) for c, v in self.cash.items()]
