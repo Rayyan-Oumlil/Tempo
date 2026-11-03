@@ -290,3 +290,25 @@ Criteria: FAIL Sharpe at or above both always-held equal weight (0.46) and 60/40
 
 ## 2026-11-03 (16:35 ET): Claude earnings-release reading, forward test pre-registered (before any release was read)
 Protocol in `evidence/llm_earnings_forward.json`. Universe rule: US-listed companies on the Digrin calendar's after-close list for the day, in calendar order; first 10 whose own press release can be retrieved for the pilot. Forced long or short call versus SPY plus a 1 to 5 confidence, recorded in the signal ledger right after each reading; no prices or market reaction allowed as inputs. Full test needs 100 signals and four conditions at the 5-day horizon (mean net excess above 0.30%, t above 2.0, hit rate above 55%, permutation p below 0.05). A pilot of 10 proves nothing statistically; its job is to test the pipeline and measure the effort per document.
+
+### 2026-11-03 (16:35 to 17:00 ET): pilot of the Claude earnings-reading forward test, 10 signals recorded
+Protocol: `evidence/llm_earnings_forward.json` (committed before any release was read). Universe: Digrin's after-close list for 2026-11-03, US-listed tickers in calendar order. Calls recorded in `ledger/ledger.jsonl` (source `claude_earnings_v1`), each right after reading and before looking at the next company, with no prices or reaction seen.
+
+| Order | Ticker | Call | Conf | Key facts read |
+|---|---|---|---|---|
+| 1 | AMD | long | 3 | Revenue 13.4B (+45%), data center +97%, non-GAAP EPS 2.09 vs 1.97 est, Q4 guide about 17B |
+| 2 | AMGN | long | 2 | Non-GAAP EPS 6.45 vs 5.91 est, revenue +8%; Prolia -45%, FCF lower |
+| 3 | ANET | long | 3 | Revenue 3.66B (+58.5%), beat own guide by 11%; EPS 1.20 vs 1.10 |
+| 4 | BKNG | short | 3 | Adj EPS 4.66 vs 4.59; revenue -1%; travel demand moderated late Q3 |
+| 5 | ALAB | long | 2 | Revenue 584.9M (+154% y/y); expectations very high |
+| 6 | AIG | long | 2 | AATI/share 2.06 vs 1.90 est; down y/y; combined ratio worse |
+| 7 | PRU | long | 2 | Adj EPS 3.77 vs 3.40 est; Japan sales suspension |
+| 8 | SMCI | long | 2 | Non-GAAP EPS 1.81 vs 1.26 est; gross margin 12.7%; operating cash flow negative |
+| 9 | CPNG | short | 3 | Operating loss -450M, net loss -501M vs about breakeven est |
+| 10 | IFF | long | 2 | Adj EPS 0.83 vs 0.80; raised low end of guide; softer Q4 profit warned |
+
+Skips (the protocol allows only "release cannot be retrieved"): ITUB3.SA, SU.TO, IFC.TO, GFNORTEO.MX (non-US tickers, by the universe rule); ROKU (no 8-K item 2.02 on EDGAR yet at about 16:55 ET). AMGN, ANET, BKNG, ALAB, AIG and PRU were first "skipped" because my fetch of each company's own investor-relations page failed (404, 403, JavaScript-only pages, or not updated); that was my retrieval method, not their content, so they were re-attempted in the same calendar order through SEC EDGAR, which worked for all of them.
+
+**Findings about the process.** (1) Company IR pages are an unreliable source (only AMD's worked); SEC EDGAR is uniform: every release is an 8-K item 2.02 with an EX-99.1 exhibit, found through the document-type column of the filing index. Built `tempo/edgar.py` (identifies itself with the contact string in `.env`, one request per 0.25 s, fails loudly). (2) Effort: about 2 short tool calls and 1.5 to 2.5 thousand tokens of reading per company in brief mode, so 100 signals is roughly 250 thousand tokens of reading; automating it through the API would cost real money and needs the owner's cap. (3) **Weaknesses of this pilot:** 8 longs and 2 shorts, confidences mostly 2, so even a perfect reading could not show much; the guidance numbers were often cut off in brief mode (ANET and ALAB Q4 outlooks were not read); the reader has priors about these companies from before its training cutoff.
+**Pilot reading, not a conclusion:** nothing can be concluded from 10 signals, and nothing will be until at least 30 are scored (the ledger enforces that) and the full test's 100.
+Scoring: `python -m tempo.ledger_score` (needs Gateway) writes scores as days pass; the first 1-day scores are possible after the close of 2026-11-04. Then `python -m tempo.ledger` shows the state.
