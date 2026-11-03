@@ -265,3 +265,22 @@ Step 1 of the plan in `what-people-do.md`. Fixed in `evidence/tactical_allocatio
 
 ### 2026-11-03 (late): implementation decision for the tactical allocation test, made BEFORE the first run
 The pre-registration did not say how to compare strategies that sit in cash while their averages warm up (the first 6 to 12 months) against benchmarks that invest at once. Decision, recorded before any result existed: every strategy and benchmark is measured over the same window, starting at the 12th month end (the longest warm-up among the four variants). No criterion or parameter in `evidence/tactical_allocation.json` changes.
+
+### 2026-11-03 (late): result, tactical asset allocation (Faber-style, five ETFs): FAIL (4 of 8 criteria failed)
+Run once, `python -m tempo.tactical_report` (code committed first, 8541f2d). SPY, EFA, AGG, DBC, VNQ; window 2007-11-30 to 2026-11-02 (18.9 years), identical for every row; `Costs()` plus 1 bp; 4 variants tried; cash earns 0.
+
+| Strategy | CAGR | Sharpe | maxDD | Orders | Costs USD |
+|---|---|---|---|---|---|
+| **M=10 (primary)** | 3.8% | 0.51 | -17.2% | 817 | 1,702 |
+| M=6 | 4.1% | 0.56 | -12.5% | 834 | 2,362 |
+| M=8 | 4.5% | 0.60 | -15.2% | 841 | 1,971 |
+| M=12 | 4.1% | 0.55 | -13.5% | 803 | 1,710 |
+| Equal weight of the 5, always held | 5.9% | 0.46 | -47.4% | 1,134 | 1,253 |
+| 60/40 SPY/AGG | 8.0% | 0.71 | -35.1% | 459 | 566 |
+| SPY buy and hold | 11.0% | 0.63 | -54.1% | 1 | 15 |
+
+Primary net CAGR at 0 / 1 / 3 / 5 / 10 bps per side: 3.9 / 3.8 / 3.8 / 3.8 / 3.7% (costs are not the issue; 32% of equity sat in cash on average). Shuffled control: real Sharpe 0.51, shuffled mean 0.38, best 0.75, real beats 84%. t-statistic 2.20; Sharpe by half 0.29 and 0.81.
+Criteria: FAIL Sharpe at or above both always-held equal weight (0.46) and 60/40 (0.71); PASS drawdown shallower than SPY and equal weight (-17.2% vs -54.1% and -47.4%); FAIL CAGR above the 60/40's (3.8% vs 8.0%); PASS positive Sharpe in both halves; FAIL t > 3.0 (2.20); PASS CAGR > 0 at 5 bps; FAIL beats 95% of shuffles (84%); PASS 3 of 4 variants at or above equal-weight Sharpe.
+
+**What it says.** The timing rule does what the literature says: it cuts the worst drawdown by about two thirds (-17% against -47% for the same assets always held) and lifts Sharpe a little (0.51 vs 0.46), but it makes less money than the same assets always held (3.8% vs 5.9%), far less than a plain 60/40 (8.0%), and the 60/40 also has the higher Sharpe (0.71). Out of sample the vendor figure was CAGR 6.05% and Sharpe 0.68 (2006 to March 2025); ours is lower, plausibly because cash earns 0 here (about 32% of equity in cash; at a 2% cash rate that would add roughly 0.6 points, still well short of the 60/40) and DBC and AGG replace GSG and IEF. Exploratory arithmetic, not a test. The most common retail systematic approach, as specified, is a risk reducer that loses to a two-fund 60/40 on both return and Sharpe in 2007 to 2026.
+**Running tally of pre-registered tests: six, none passed** (SMA 200 trend, 12-1 momentum rotation, pairs, overnight drift, mean reversion, tactical allocation). Forward test of the mean-reversion rules is running.
