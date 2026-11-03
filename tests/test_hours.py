@@ -46,3 +46,30 @@ def test_2027_ordinary_days_next_to_closures_are_open_and_the_day_after_thanksgi
         assert is_regular_hours(utc(2027, month, day, 16)), (month, day)   # 11:00 ET
     assert is_regular_hours(utc(2027, 11, 26, 17, 59))     # 12:59 ET
     assert not is_regular_hours(utc(2027, 11, 26, 18, 0))  # 13:00 ET
+
+
+from datetime import date as _date
+
+from tempo.hours import add_trading_days, is_trading_day, next_trading_day, session_close
+
+
+def test_weekends_and_listed_holidays_are_not_trading_days():
+    assert is_trading_day(_date(2026, 11, 3)) and not is_trading_day(_date(2026, 11, 7)) and not is_trading_day(_date(2026, 11, 26))
+
+
+def test_next_trading_day_skips_weekends_and_holidays():
+    assert next_trading_day(_date(2026, 11, 6)) == _date(2026, 11, 9)       # Friday -> Monday
+    assert next_trading_day(_date(2026, 11, 25)) == _date(2026, 11, 27)     # Wednesday -> Friday (Thanksgiving closed)
+    assert next_trading_day(_date(2026, 11, 3)) == _date(2026, 11, 4)
+
+
+def test_add_trading_days_counts_only_open_days():
+    assert add_trading_days(_date(2026, 11, 3), 0) == _date(2026, 11, 3)
+    assert add_trading_days(_date(2026, 11, 3), 4) == _date(2026, 11, 9)    # 4, 5, 6, then Monday 9
+    assert add_trading_days(_date(2026, 11, 25), 1) == _date(2026, 11, 27)
+
+
+def test_session_close_is_earlier_on_early_close_days():
+    from datetime import time
+    assert session_close(_date(2026, 11, 3)) == time(16, 0)
+    assert session_close(_date(2026, 11, 27)) == time(13, 0)

@@ -37,3 +37,25 @@ def is_regular_hours(now: datetime | None = None) -> bool:
         return False
     close = EARLY_CLOSE if local.date() in EARLY_CLOSE_DAYS else CLOSE
     return OPEN <= local.time() < close
+
+
+def is_trading_day(day: date) -> bool:
+    return day.weekday() < 5 and day not in CLOSED_DAYS
+
+
+def next_trading_day(day: date) -> date:
+    return add_trading_days(day, 1)
+
+
+def add_trading_days(day: date, n: int) -> date:
+    """The date n trading days after `day` (n = 0 returns `day` itself, even if it is not a trading day)."""
+    from datetime import timedelta
+    while n > 0:
+        day += timedelta(days=1)
+        if is_trading_day(day):
+            n -= 1
+    return day
+
+
+def session_close(day: date) -> time:
+    return EARLY_CLOSE if day in EARLY_CLOSE_DAYS else CLOSE
