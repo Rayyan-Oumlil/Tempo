@@ -1,0 +1,35 @@
+{
+  "_note": "Pre-registered 2026-11-03 (evening), BEFORE the insider collector was built and before any insider signal was recorded. Do not edit to fit a result. To change a rule, add a dated entry to docs/research/log.md saying why, then edit.",
+  "purpose": "A forward test of insider-purchase clusters. Evidence for: Cohen, Malloy, Pomorski (2012) found opportunistic insiders' trades earned 82 bps a month value-weighted in a sample ending 2007. Evidence against: later work says returns vanish and turn negative when the dollar amount per signal is capped to a realistic size and correlate negatively with liquidity; a 2020 to 2025 study's placebo shifted six months forward gave a similar result (docs/research/what-people-do.md section 2E). A historical backtest would be biased upward (delisted stocks are missing from free price data), so only a forward test is run.",
+  "source_name": "insider_cluster_v1",
+  "data": "SEC EDGAR daily index (form.YYYYMMDD.idx) for Form 4 (not 4/A), then each filing's ownershipDocument XML. Free; identifies itself with the contact string in .env; at most one request per 0.25 s.",
+  "transactions_counted": "non-derivative transactions with transactionCode P (open-market purchase) and acquired code A, whose filing is not flagged aff10b5One = 1 (a pre-planned 10b5-1 purchase), by any reporting owner (officer, director or 10% owner), for an issuer with a plain letters-only trading symbol.",
+  "cluster_rule": "As of the collection day, per issuer, over filings dated in the trailing 7 calendar days: at least 2 distinct reporting owners with counted purchases AND total purchase value at least 200,000 USD AND volume-weighted purchase price at least 5.00 USD.",
+  "emission": "One long signal (direction +1) per issuer; not repeated for the same issuer within 30 days; event_id is the date of the newest filing in the cluster (YYYYMMDD). No short signals. Recorded in the ledger at collection time with the clock's timestamp.",
+  "timing": "The index for a day exists only after that day (the SEC generates it overnight), so the collector processes each trading day's index once it exists. Entry is the open of the first trading day strictly after the ledger date (conservative). The first run builds the 7-day window from the most recent trading days available, so clusters already complete are emitted once, at the time of the first run.",
+  "cost_assumption": "round_trip_cost 0.005 (50 bps) stored with each signal, because insider buys concentrate in smaller, less liquid stocks. The ledger's default of 0.0006 is NOT used for this source.",
+  "ledger": "horizons 1, 5 and 21 trading days against SPY; primary horizon 21",
+  "full_test": {
+    "minimum_scored_signals_at_primary_horizon": 100,
+    "pass_all_of": [
+      "mean net excess return at 21 days above 1.0% (after the 50 bps cost)",
+      "t-statistic of the 21-day net excess returns above 2.0",
+      "hit rate (share of positive net excess) at 21 days above 52%",
+      "positive mean net excess in BOTH chronological halves of the scored signals",
+      "fewer than 10% of signals that could not be scored because price data was missing 30 trading days after their horizon (a delisted or untradeable stock must not silently disappear)"
+    ],
+    "reported_not_criteria": [
+      "1 and 5 day results",
+      "result by purchase size and by number of insiders",
+      "median market price of the cluster"
+    ]
+  },
+  "known_limits": [
+    "The universe is whatever files Form 4 with a US ticker: many are illiquid microcaps where the open-to-close prices in our data cannot be traded at that size; the 50 bps assumption may still be too kind.",
+    "Insiders who trade for informational reasons are not separated from routine ones (the 2012 paper used years of history); a rule this simple will include noise.",
+    "A cluster can be complete before the first run; those are emitted once with a date of the first run, so the stock may have moved already.",
+    "Score prices come from IBKR daily bars; if IBKR has no bars for a symbol the signal is reported as unscorable."
+  ],
+  "if_fail": "Report it as a failure and stop spending effort on insider purchases.",
+  "if_pass": "Still not proof of an edge and not real money: next is a second independent period and a realistic-size execution check, then the gate in evidence/gate.json."
+}
