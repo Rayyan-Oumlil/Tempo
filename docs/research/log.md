@@ -262,3 +262,6 @@ Write-up: `docs/research/what-people-do.md`, every claim tagged by source qualit
 
 ## 2026-11-03 (late): tactical asset allocation pre-registered (before any signal was computed)
 Step 1 of the plan in `what-people-do.md`. Fixed in `evidence/tactical_allocation.json`: Faber's five asset classes (SPY, EFA, AGG, DBC, VNQ; AGG and DBC replace IEF and GSG for history length, not performance), 10-month average on month-end closes, 20% per asset that is on and cash otherwise, next-close fills, four variants (6, 8, 10, 12 months), three benchmarks (the same five assets always held, 60/40, SPY), eight pass criteria including a shuffled-data control. Expectation stated up front: lower drawdown than buy and hold, not more money.
+
+### 2026-11-03 (late): implementation decision for the tactical allocation test, made BEFORE the first run
+The pre-registration did not say how to compare strategies that sit in cash while their averages warm up (the first 6 to 12 months) against benchmarks that invest at once. Decision, recorded before any result existed: every strategy and benchmark is measured over the same window, starting at the 12th month end (the longest warm-up among the four variants). No criterion or parameter in `evidence/tactical_allocation.json` changes.

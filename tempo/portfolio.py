@@ -121,3 +121,48 @@ def same_permutation_shuffle(closes: Closes, rng: random.Random) -> Closes:
             path.append(path[-1] * ratios[i])
         out[sym] = path
     return out
+
+
+def run_weighted(dates: list[str], closes: Closes, costs: Costs, weight_fn, capital: float = 100_000.0) -> PResult:
+    """Rebalance to target weights decided at each month-end close and filled at the next trading day's close.
+
+    `weight_fn(t)` is called at each month-end index t with access only to data through t (the caller's closure),
+    and returns {symbol: weight} (weights non-negative, summing to at most 1; the rest stays in cash) or None for
+    'no change'. Whole shares, sells before buys, every order pays `Costs`.
+    """
+    symbols = sorted(closes)
+    signal_days = set(month_end_indices(dates))
+    cash, shares = capital, {s: 0 for s in symbols}
+    target: dict[str, float] | None = None
+    equity: list[float] = []
+    trades: list[PTrade] = []
+    for t in range(len(dates)):
+        px = {s: closes[s][t] for s in symbols}
+        if target is not None:  # decided at yesterday's close, filled at today's
+            total = cash + sum(shares[s] * px[s] for s in symbols)
+            want = {s: int(total * target.get(s, 0.0) // px[s]) for s in symbols}
+            for s in symbols:
+                if want[s] < shares[s]:
+                    qty = shares[s] - want[s]
+                    cost = order_cost(qty, px[s], "SELL", costs)
+                    cash += qty * px[s] - cost
+                    shares[s] = want[s]
+                    trades.append(PTrade(t, s, "SELL", qty, px[s], cost))
+            for s in symbols:
+                qty = want[s] - shares[s]
+                while qty > 0 and qty * px[s] + order_cost(qty, px[s], "BUY", costs) > cash:
+                    qty -= 1
+                if qty > 0:
+                    cost = order_cost(qty, px[s], "BUY", costs)
+                    cash -= qty * px[s] + cost
+                    shares[s] += qty
+                    trades.append(PTrade(t, s, "BUY", qty, px[s], cost))
+            target = None
+        equity.append(cash + sum(shares[s] * px[s] for s in symbols))
+        if t in signal_days:
+            weights = weight_fn(t)
+            if weights is not None:
+                if any(w < 0 for w in weights.values()) or sum(weights.values()) > 1.0 + 1e-9:
+                    raise ValueError(f"weights must be non-negative and sum to at most 1, got {weights}")
+                target = weights
+    return PResult(equity=equity, trades=trades, costs=sum(tr.cost for tr in trades))
