@@ -196,3 +196,6 @@ Criteria: FAIL Sharpe >= 0.5 (0.26); FAIL Sharpe > 0.3 at 1.5% borrow (0.16); PA
 
 **Limits.** Survivorship (all pairs exist today), borrow fee assumed, fills at the close with 1 bp slippage, hedge ratio fixed at 1.
 **Running tally of pre-registered daily-data tests: three, all failed** (SMA 200 trend on SPY, 12-1 momentum rotation, pairs).
+
+## 2026-11-03: deep research on swing trading
+Full write-up with every claim tagged by source quality: `docs/research/swing-trading-research.md` (about 30 searches across two sessions plus the reference repos' own results). Headline: no published swing rule for liquid US stocks and ETFs is a reliable cost-surviving edge today; the biggest open uncertainty is real slippage (a JoF 2025 draft puts IBKR small market orders near 0.44% round trip against our assumed 1 bp, unverified for liquid ETFs); no peer-reviewed evidence that retail swing traders profit. Ranked test queue: overnight drift on SPY/QQQ, low-exposure mean reversion on SPY/QQQ, large-cap reversal with a VIX filter, sector-ETF momentum, high-volume premium. Nothing built or run.
