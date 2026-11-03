@@ -1,0 +1,51 @@
+{
+  "_note": "Pre-registered 2026-11-03, BEFORE any open-price data was downloaded or any result existed. Do not edit to fit a result. To change a criterion, add a dated entry to docs/research/log.md saying why, then edit.",
+  "idea": "Overnight drift: buy the close, sell the next open, every trading day. Sources: Cooper, Cliff, Gulen (2008); Lou, Polk, Skouras (2019); later persistence work (search summaries, papers not read). All sources are gross of costs, which is exactly what this test adds. See docs/research/swing-trading-research.md section 2G.",
+  "instruments": [
+    "SPY",
+    "QQQ"
+  ],
+  "instrument_note": "Fixed now. SPY is the primary; QQQ is a confirmation. No other instruments will be tried.",
+  "rule": {
+    "entry": "buy at the day's close (a market-on-close order in practice)",
+    "exit": "sell at the next trading day's open (a market-on-open order in practice)",
+    "position": "all of equity in whole shares; cash residual idle at 0",
+    "prices": "IBKR daily bars, ADJUSTED_LAST (split and dividend adjusted). Today's unfinished bar dropped. The adjusted open and close are checked for consistency on a known ex-dividend date before the run.",
+    "costs": "tempo.backtest.Costs commission and the SEC fee on the sell, plus slippage in bps per side",
+    "slippage_base_bps_per_side": 1.0,
+    "slippage_sensitivity_bps_per_side": [
+      0,
+      1,
+      3,
+      5,
+      10
+    ],
+    "capital": "100,000 primary; 10,000 reported as well (the 1.00 minimum commission matters at that size)"
+  },
+  "reported_not_criteria": [
+    "intraday leg (open to close) mean daily return, to show the tug of war",
+    "buy and hold over the same days",
+    "break-even slippage per side: the bps per side at which net CAGR reaches 0",
+    "result by year"
+  ],
+  "variants_tried": {
+    "count": 2,
+    "list": [
+      "SPY",
+      "QQQ"
+    ],
+    "note": "No parameters exist to tune."
+  },
+  "shuffle_control": "Not used: shuffling days does not change a mean drift, so it cannot tell us anything here. The t-statistic and the half-sample split carry that job.",
+  "pass_all_of": [
+    "SPY net Sharpe at 1 bp per side >= SPY buy-and-hold Sharpe over the same days",
+    "SPY net CAGR > 0 at 3 bps per side (a 3x margin over the 1 bp assumption)",
+    "SPY net CAGR > 0 at 1 bp per side in both halves of the sample",
+    "SPY net CAGR > 0 at 1 bp per side in the post-2010 part alone (the original studies end in 2006)",
+    "t-statistic of SPY's mean daily net return at 1 bp per side > 3.0 (Harvey, Liu, Zhu)",
+    "SPY max drawdown shallower than SPY buy and hold",
+    "QQQ passes the CAGR-at-3-bps, both-halves, and Sharpe-vs-buy-and-hold criteria too"
+  ],
+  "if_fail": "Report it as a failure. Report the break-even slippage anyway: it tells us how much room a better execution would need. No extra instruments, no parameter changes.",
+  "if_pass": "Still not proof of an edge and not real money: next step is a fill-and-slippage log on the paper account (market-on-close and market-on-open orders through tempo/orders.py), because slippage is the one number we only assume."
+}
