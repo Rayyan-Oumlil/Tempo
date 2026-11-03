@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from tempo.edgar import (EdgarError, Throttle, cik_for, html_to_text, pick_exhibit, select_earnings_filing)
+from tempo.edgar import EdgarError, Throttle, cik_for, html_to_text, pick_exhibit, select_earnings_filing
 
 SUBMISSIONS = {"filings": {"recent": {
     "accessionNumber": ["0001-26-000003", "0001-26-000002", "0001-26-000001"],
@@ -25,18 +25,26 @@ def test_ignores_non_earnings_8ks_other_forms_and_other_dates():
     assert select_earnings_filing({"filings": {"recent": {k: [] for k in SUBMISSIONS["filings"]["recent"]}}}, "2026-11-03") is None
 
 
-def test_pick_exhibit_prefers_the_press_release_exhibit_over_the_main_document():
-    index = {"directory": {"item": [{"name": "a8k.htm"}, {"name": "amd-20261103xex991.htm"}, {"name": "image.jpg"}, {"name": "a8k.xml"}]}}
-    assert pick_exhibit(index, primary="a8k.htm") == "amd-20261103xex991.htm"
+REAL_INDEX = """<table class="tableFile" summary="Document Format Files">
+ <tr><th>Seq</th><th>Description</th><th>Document</th><th>Type</th><th>Size</th></tr>
+ <tr><td scope="row">1</td><td scope="row">8-K</td><td scope="row"><a href="/ix?doc=/Archives/edgar/data/318154/000031815426000153/amgn-20261103.htm">amgn-20261103.htm</a> &nbsp;&nbsp;<span>iXBRL</span></td><td scope="row">8-K</td><td scope="row">38978</td></tr>
+ <tr class="evenRow"><td scope="row">2</td><td scope="row">EARNINGS RELEASE</td><td scope="row"><a href="/Archives/edgar/data/318154/000031815426000153/amgn-20260930earningsrelea.htm">amgn-20260930earningsrelea.htm</a></td><td scope="row">EX-99.1</td><td scope="row">617058</td></tr>
+ <tr><td scope="row">6</td><td scope="row">GRAPHIC</td><td scope="row"><a href="/Archives/edgar/data/318154/000031815426000153/amgenlogo.jpg">amgenlogo.jpg</a></td><td scope="row">GRAPHIC</td><td scope="row">13030</td></tr>
+</table>"""
 
 
-@pytest.mark.parametrize("name", ["d123dex991.htm", "ex99-1.htm", "ex-99.1.htm", "q3ex991pressrelease.htm", "EX99_1.HTM"])
-def test_pick_exhibit_recognises_common_exhibit_names(name):
-    assert pick_exhibit({"directory": {"item": [{"name": "main.htm"}, {"name": name}]}}, primary="main.htm") == name
+def test_pick_exhibit_uses_the_official_type_column_not_the_file_name():
+    assert pick_exhibit(REAL_INDEX, fallback="FALLBACK") == "https://www.sec.gov/Archives/edgar/data/318154/000031815426000153/amgn-20260930earningsrelea.htm"
 
 
-def test_pick_exhibit_falls_back_to_the_primary_document_when_there_is_no_exhibit():
-    assert pick_exhibit({"directory": {"item": [{"name": "main.htm"}, {"name": "logo.png"}]}}, primary="main.htm") == "main.htm"
+def test_pick_exhibit_takes_other_ex99_numbers_and_ignores_other_exhibits():
+    page = REAL_INDEX.replace("EX-99.1", "EX-10.1")
+    assert pick_exhibit(page, fallback="FALLBACK") == "FALLBACK"
+    assert pick_exhibit(REAL_INDEX.replace("EX-99.1", "EX-99.2"), fallback="F").endswith("earningsrelea.htm")
+
+
+def test_pick_exhibit_falls_back_when_the_page_has_no_documents_table():
+    assert pick_exhibit("<html>nothing</html>", fallback="FALLBACK") == "FALLBACK"
 
 
 def test_html_to_text_strips_markup_scripts_and_entities():
@@ -73,3 +81,13 @@ def test_throttle_spaces_requests_at_least_the_minimum_interval_apart():
 def test_edgar_error_carries_the_url():
     err = EdgarError("https://x", "HTTP 403")
     assert "https://x" in str(err) and "403" in str(err)
+
+
+from tempo.edgar import brief_text
+
+
+def test_brief_text_keeps_the_head_and_the_guidance_lines_only():
+    text = "\n".join(["HEADLINE: results", "Revenue up 45%"] + ["filler line"] * 200 + ["For the fourth quarter, the company expects revenue of 17 billion", "legal boilerplate", "2026 Guidance"])
+    out = brief_text(text, head=60, max_lines=5)
+    assert out.startswith("HEADLINE: results") and "expects revenue of 17 billion" in out and "2026 Guidance" in out
+    assert out.count("filler line") < 5 and "legal boilerplate" not in out
