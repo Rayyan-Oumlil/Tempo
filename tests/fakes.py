@@ -14,6 +14,21 @@ OPEN_NOW = datetime(2026, 11, 3, 16, 0, tzinfo=timezone.utc)
 CLOSED_NOW = datetime(2026, 11, 4, 1, 0, tzinfo=timezone.utc)
 
 
+class FakeEvent:
+    """Minimal stand-in for eventkit.Event: `event += handler`, `event.emit(*args)`."""
+
+    def __init__(self):
+        self.handlers = []
+
+    def __iadd__(self, handler):
+        self.handlers.append(handler)
+        return self
+
+    def emit(self, *args):
+        for handler in list(self.handlers):
+            handler(*args)
+
+
 class FakeTrade:
     def __init__(self, contract, order, status):
         self.contract = contract
@@ -45,7 +60,8 @@ class FakeIB:
         self.global_cancels = 0
         self.positions_raise = False
         self._ids = iter(range(1000, 2000))
-        self.client = NS(getReqId=lambda: next(self._ids))
+        self.client = NS(getReqId=lambda: next(self._ids), clientId=21)
+        self.errorEvent = FakeEvent()
 
     def sleep(self, _):
         pass
@@ -63,6 +79,8 @@ class FakeIB:
                 for s, q in self.held.items() if q]
 
     def placeOrder(self, contract, order):
+        order.orderId = order.orderId or self.client.getReqId()  # like ib_async: only when the caller gave none
+        order.clientId = self.client.clientId
         self.placed.append(order)
         trade = FakeTrade(contract, order, "Submitted")
         if self.fill_seq.pop(0) if self.fill_seq else self.fill:

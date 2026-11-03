@@ -3,7 +3,7 @@ from fakes import CLOSED_NOW, OPEN_NOW, SPY, FakeIB
 from ib_async import LimitOrder, MarketOrder, StopOrder
 
 from tempo.journal import Journal
-from tempo.orders import Limits, OrderRefused, place, record_outcome
+from tempo.orders import Limits, OrderRefused, broker_reason, place, record_outcome
 from tempo.state import set_mode
 
 LIMITS = Limits(max_position_pct=50.0)
@@ -125,6 +125,77 @@ def test_record_outcome_closes_the_intent(env):
     assert env["journal"].unresolved() == []
     out = env["journal"].records()[-1]
     assert out["status"] == "Filled" and out["filled"] == 10 and out["commission"] == 1.0
+
+
+def broker_says(ib, trade, code, text="Order rejected - reason: because"):
+    ib.errorEvent.emit(trade.order.orderId, code, text)
+
+
+@pytest.mark.parametrize("code,kind", [(201, "rejected"), (110, "error"), (391, "error")])
+def test_broker_reason_classifies_the_error_the_broker_sent(env, code, kind):
+    ib = FakeIB(fill=False)
+    trade = entry(ib, env)
+    broker_says(ib, trade, code)
+    assert broker_reason(trade) == {"reason_code": code, "reason_kind": kind, "reason_text": "Order rejected - reason: because"}
+
+
+def test_no_error_means_no_reason(env):
+    assert broker_reason(entry(FakeIB(fill=False), env)) == {}
+
+
+def test_the_latest_error_wins(env):
+    ib = FakeIB(fill=False)
+    trade = entry(ib, env)
+    broker_says(ib, trade, 110, "off tick")
+    broker_says(ib, trade, 201, "rejected")
+    assert broker_reason(trade)["reason_code"] == 201
+
+
+@pytest.mark.parametrize("code", [202, 10349, 2104, 2106])
+def test_notices_that_say_nothing_about_the_order_are_ignored(env, code):
+    ib = FakeIB(fill=False)
+    trade = entry(ib, env)
+    broker_says(ib, trade, code, "notice")
+    assert broker_reason(trade) == {}
+
+
+def test_errors_without_an_order_id_are_ignored(env):
+    ib = FakeIB(fill=False)
+    trade = entry(ib, env)
+    ib.errorEvent.emit(-1, 1100, "Connectivity between IB and TWS has been lost")
+    assert broker_reason(trade) == {}
+
+
+def test_errors_of_another_order_are_not_mixed_in(env):
+    ib = FakeIB(fill=False)
+    first, second = entry(ib, env), entry(ib, env, LimitOrder("BUY", 1, 90.0))
+    broker_says(ib, second, 201)
+    assert broker_reason(first) == {} and broker_reason(second)["reason_code"] == 201
+
+
+def test_outcome_of_a_rejected_order_records_why(env):
+    ib = FakeIB(fill=False)
+    trade = entry(ib, env)
+    trade.orderStatus.status = "Inactive"  # what IBKR does with a 201
+    broker_says(ib, trade, 201, "Order rejected - reason:insufficient funds")
+    record_outcome(env["journal"], trade)
+    out = env["journal"].records()[-1]
+    assert (out["status"], out["reason_code"], out["reason_kind"]) == ("Inactive", 201, "rejected")
+    assert "insufficient funds" in out["reason_text"]
+
+
+def test_outcome_of_a_filled_order_carries_no_reason_even_after_a_notice(env):
+    ib = FakeIB()
+    trade = entry(ib, env)  # fills at once
+    broker_says(ib, trade, 399, "Order message: warning")
+    record_outcome(env["journal"], trade)
+    assert "reason_code" not in env["journal"].records()[-1]
+
+
+def test_the_error_listener_is_attached_once_per_connection(env):
+    ib = FakeIB(fill=False)
+    entry(ib, env), entry(ib, env, LimitOrder("BUY", 1, 90.0))
+    assert len(ib.errorEvent.handlers) == 1
 
 
 def test_entry_refused_once_the_market_calendar_has_expired(env):

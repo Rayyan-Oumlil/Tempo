@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import copy
 import uuid
+import weakref
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -141,7 +142,9 @@ def dispatch(ib, contract, order, *, reason: str, journal: Journal, limits: Limi
                    qty=order.totalQuantity, order_type=order.orderType, lmt=_price(order.lmtPrice), aux=_price(order.auxPrice),
                    reason=reason, exit=exit_order, fp=list(_fingerprint(contract, order)))
     try:
+        trades = watch_order_errors(ib)
         trade = ib.placeOrder(contract, sendable)
+        trades[trade.order.orderId] = trade
     except Exception as exc:
         journal.append("outcome", ref=sendable.orderRef, status="error", error=repr(exc))
         raise
@@ -161,10 +164,57 @@ def place(ib, contract, order, *, reason: str, journal: Journal, limits: Limits,
         return dispatch(ib, contract, order, reason=reason, journal=journal, limits=limits, exit_order=exit_order)
 
 
+REJECTED_CODE = 201  # "Order rejected - reason: ..." (arrives as status Inactive, and ONLY through errorEvent)
+# Notices that say nothing about why an order failed: 202 is IBKR's "Order Canceled - reason:" with a blank reason
+# (sent for our own cancels too, so it cannot tell who cancelled), 10349 is "TIF set to DAY", 21xx are data-farm status.
+IGNORED_CODES = frozenset({202, 10349})
+
+_TRADES_BY_ID: "weakref.WeakKeyDictionary" = weakref.WeakKeyDictionary()  # connection -> {orderId: trade}
+
+
+def watch_order_errors(ib) -> dict:
+    """Start storing, on each trade, the last error IBKR sends for its order id. Once per connection.
+
+    Verified live (2026-11-03): a real 201 rejection leaves `trade.log` without any error code, so the only place
+    to learn why an order was refused is `ib.errorEvent`. The same holds for 110 and 391. Hence this listener.
+    Returns the connection's {orderId: trade} map; `dispatch` adds each new trade to it.
+    """
+    trades = _TRADES_BY_ID.get(ib)
+    if trades is not None:
+        return trades
+    trades = _TRADES_BY_ID[ib] = {}
+
+    def on_error(req_id, code, text, *_):
+        trade = trades.get(req_id)
+        if trade is not None and code not in IGNORED_CODES and not 2100 <= code < 2200:
+            trade.broker_error = (code, text)
+
+    ib.errorEvent += on_error
+    return trades
+
+
+def broker_reason(trade) -> dict:
+    """Why IBKR says this order failed, as journal fields, or {} if it sent no error for the order.
+
+    The error can arrive after the status, so ask once the order is done. Cancels made by us or by IBKR both
+    produce the same blank 202 notice, so a plain cancel has no reason here.
+    """
+    found = getattr(trade, "broker_error", None)  # set only by the listener, when IBKR sent an error
+    if found is None:
+        return {}
+    code, text = found
+    return {"reason_code": code, "reason_kind": "rejected" if code == REJECTED_CODE else "error", "reason_text": text}
+
+
 def record_outcome(journal: Journal, trade) -> dict:
-    """Close the journal entry for a trade with its current state (call once it is done, or has been cancelled)."""
+    """Close the journal entry for a trade with its current state (call once it is done, or has been cancelled).
+
+    An order that did not fully fill also records why the broker says so. A filled order does not: harmless notices
+    (such as 10349, "TIF set to DAY") sit in the log of orders that went fine.
+    """
     status = trade.orderStatus
+    reason = {} if status.status == "Filled" else broker_reason(trade)
     return journal.append(
         "outcome", ref=trade.order.orderRef, status=status.status, filled=status.filled,
-        avg_price=status.avgFillPrice, commission=sum(f.commissionReport.commission for f in trade.fills),
+        avg_price=status.avgFillPrice, commission=sum(f.commissionReport.commission for f in trade.fills), **reason,
     )

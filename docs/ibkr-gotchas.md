@@ -99,3 +99,14 @@ A paper account only simulates fees. Check the real fee schedule before going li
 - A Claude Code session that has a folder as its working directory locks it; a rename fails with "Device or resource busy".
 - Windows PowerShell 5.1 `ren tempo Tempo` rejects a case-only rename; rename via a temporary name.
 - Python run from WSL can't reach a Gateway on the Windows host via localhost (video 01).
+
+## Why an order failed: where the reason actually is (verified live 2026-11-03)
+| What IBKR did | Status we see | Where the error code is |
+|---|---|---|
+| 201 "Order rejected - reason: ..." (tested with 20,000 SPY, margin far beyond the account) | `Inactive` | **Only `ib.errorEvent`.** `trade.log` has no error code. |
+| 110 (price off the tick) | `Cancelled` | `errorEvent` and `trade.log` |
+| 391 (GTD with no valid date) | `Cancelled` | `errorEvent` and `trade.log` |
+| 202 "Order Canceled - reason:" | `Cancelled` | `errorEvent` only, and the reason text is **blank**. It is sent for our own cancels too, so it cannot tell who cancelled. |
+| 10349 "TIF set to DAY" | none (harmless) | `errorEvent` |
+
+`tempo.orders` therefore listens to `errorEvent` per connection (idea from thetagang's order supervision) and journals `reason_code`, `reason_kind` (`rejected` for 201, otherwise `error`) and `reason_text` on any order that did not fully fill. Plain cancels, 202 and 10349 leave no reason. Limit: the error can arrive after the status, so record the outcome once the order is done (the live test waits 1.5 s).

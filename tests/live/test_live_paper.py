@@ -12,7 +12,7 @@ from tempo.ibutil import wait_until
 from tempo.account import daily_loss_pct
 from tempo.kill import kill
 from tempo.lifecycle import run_lifecycle
-from tempo.orders import Limits, OrderRefused, place
+from tempo.orders import Limits, OrderRefused, dispatch, place, record_outcome
 from tempo.reconcile import reconcile
 from tempo.risk import RiskRules
 from tempo.state import get_mode
@@ -138,3 +138,27 @@ def test_exits_still_work_when_the_daily_loss_limit_is_hit(ib, spy, env, rth):
     assert all(r.ok for r in results), [r.detail for r in results]                            # the exit goes through
     ib.sleep(2)
     assert positions(ib) == {}
+
+
+def test_the_journal_records_why_the_broker_refused_an_order(ib, spy, env):
+    """110 (off tick), 391 (bad GTD date) and a real 201 (too big for the account) must each leave a reason; our own cancel must not.
+    Found live 2026-11-03: a 201 arrives as status Inactive with NO error code in trade.log, only on errorEvent."""
+    far = round(env["price"] * 0.9, 2)
+    cases = [("off-tick", LimitOrder("BUY", 1, far + 0.005, tif="DAY"), "Cancelled", 110, "error"),
+             ("bad-gtd", LimitOrder("BUY", 1, far, tif="GTD"), "Cancelled", 391, "error"),
+             ("too-big", LimitOrder("BUY", 20_000, far, tif="DAY"), "Inactive", 201, "rejected")]
+    for name, order, status, code, kind in cases:
+        order.orderRef = f"live-reason-{name}"
+        trade = dispatch(ib, spy, order, reason="live test", journal=env["journal"], limits=env["limits"], exit_order=False)
+        wait_until(ib, trade.isDone, 10)
+        ib.sleep(1.5)  # the error can arrive after the status
+        out = record_outcome(env["journal"], trade)
+        assert (out["status"], out.get("reason_code"), out.get("reason_kind")) == (status, code, kind), name
+    ours = LimitOrder("BUY", 1, far - 0.5, tif="DAY", orderRef="live-reason-ours")
+    trade = dispatch(ib, spy, ours, reason="live test", journal=env["journal"], limits=env["limits"], exit_order=False)
+    wait_until(ib, lambda: trade.orderStatus.status in ("Submitted", "PreSubmitted"), 10)
+    ib.cancelOrder(trade.order)
+    wait_until(ib, trade.isDone, 10)
+    ib.sleep(1.5)
+    assert "reason_code" not in record_outcome(env["journal"], trade)
+    assert ib.reqAllOpenOrders() == [] and env["journal"].unresolved() == []
