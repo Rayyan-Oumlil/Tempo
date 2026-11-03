@@ -1,0 +1,27 @@
+{
+  "_note": "Pre-registered 2026-11-03 (night), BEFORE the paper runner existed and before it placed any order. Do not edit to fit a result. To change a rule, add a dated entry to docs/research/log.md saying why, then edit.",
+  "purpose": "Trade the ledger's forward signals on the IBKR PAPER account through the order door (tempo/orders.py). It answers a different question from the ledger: not 'is the idea any good' (the ledger judges that, cleanly) but 'can Tempo place, fill and exit these trades, what do the fills and costs look like, and does the paper P&L agree with the ledger'. It does NOT prove profit: paper fills are simulated and optimistic, quotes are 15 minutes delayed, and positions are tiny.",
+  "signals_traded": {
+    "claude_earnings_v1": {
+      "horizon_trading_days": 5
+    },
+    "insider_cluster_v1": {
+      "horizon_trading_days": 21
+    }
+  },
+  "which_signals": "Every signal of those two sources in the ledger (backfill ones excluded), with no selection. A signal is skipped only if the order door refuses it or the stock cannot be qualified or priced at IBKR; each skip and its reason is written to the paper journal and counted.",
+  "sizing": "0.5% of account equity (in USD) per signal, whole shares, from the previous close as reference price. Long for direction +1, short for -1.",
+  "timing": {
+    "entry": "market order sent once the session is at least 5 minutes old (09:35 ET or later) on the entry day, the first trading day after the ledger date, which is the day the ledger enters at the open. A signal whose entry day has passed without an entry is recorded as missed, never entered late.",
+    "exit": "market order sent at 15:45 ET or later on the exit day, the horizon-th trading day counting the entry day as day 1 (the day the ledger exits at the close). Exits are never refused by the order door.",
+    "known_differences_from_ledger": "The ledger assumes the official open and close; the paper run trades at about 09:35 and 15:45 to 15:55. The difference is part of what is being measured."
+  },
+  "compare_at_the_end": [
+    "paper P&L per signal against the ledger's return for the same signal and horizon (same sign and size?)",
+    "average difference (paper minus ledger), which is an estimate of execution cost under paper conditions",
+    "number of signals skipped, refused or missed, with reasons",
+    "commissions paid"
+  ],
+  "no_verdict_on_profit": "Paper P&L is not an input to any strategy verdict. Verdicts come only from the ledger criteria in evidence/llm_earnings_forward.json and evidence/insider_forward.json.",
+  "safety": "Paper account only (Tempo refuses any other). The daily loss limit, kill switch and reduce-only mode apply because every order goes through tempo/orders.py. Runs only during regular hours."
+}
