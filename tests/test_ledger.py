@@ -166,3 +166,12 @@ def test_cli_add_refuses_a_confidence_outside_one_to_five_and_unknown_directions
         cli_add(["s", "T", "+1", "e1", "--confidence", "9"], make_ledger(tmp_path))
     with pytest.raises(SignalRefused):
         cli_add(["s", "T", "maybe", "e1", "--confidence", "3"], make_ledger(tmp_path))
+
+
+def test_a_source_can_declare_its_own_round_trip_cost(tmp_path):
+    s = sig(make_ledger(tmp_path), features={"round_trip_cost": 0.005})
+    score = score_signal(s, STOCK, BENCH, horizon=3)
+    assert score["round_trip_cost"] == 0.005
+    assert score["net_excess"] == pytest.approx(score["excess"] - 0.005)
+    default = score_signal(sig(make_ledger(tmp_path / "d")), STOCK, BENCH, horizon=3)
+    assert default["round_trip_cost"] == ROUND_TRIP_COST

@@ -89,11 +89,12 @@ def score_signal(signal: dict, bars: Bars, bench: Bars, horizon: int) -> dict | 
     if entry_date not in bench_index or exit_date not in bench_index:
         return None
     d = signal["direction"]
+    cost = signal["features"].get("round_trip_cost", ROUND_TRIP_COST)  # a source may declare a harsher cost (small stocks)
     ret = d * (bars.close[exit_] / bars.open[entry] - 1)
     bench_ret = d * (bench.close[bench_index[exit_date]] / bench.open[bench_index[entry_date]] - 1)
     return {"signal_id": signal["signal_id"], "source": signal["source"], "symbol": signal["symbol"], "horizon": horizon,
             "entry_date": entry_date, "exit_date": exit_date, "ret": ret, "bench_ret": bench_ret, "excess": ret - bench_ret,
-            "net_excess": ret - bench_ret - ROUND_TRIP_COST}
+            "net_excess": ret - bench_ret - cost, "round_trip_cost": cost}
 
 
 def unscored(ledger: Ledger, horizons: tuple[int, ...] = HORIZONS) -> list[tuple[dict, int]]:
