@@ -149,7 +149,7 @@ def process_day(day: date, fetcher=fetch, cache: Path = CACHE, say=print) -> dic
     """Download and parse every Form 4 filed on `day` that is not already cached. A filing that fails is NOT marked
     as seen, so the next run retries it."""
     quarter = (day.month - 1) // 3 + 1
-    index = fetcher(f"https://www.sec.gov/Archives/daily-index/{day.year}/QTR{quarter}/form.{day:%Y%m%d}.idx")
+    index = fetcher(f"https://www.sec.gov/Archives/edgar/daily-index/{day.year}/QTR{quarter}/form.{day:%Y%m%d}.idx")
     rows = parse_index(index)
     seen, _ = load_cache(cache)
     todo = [r for r in rows if r["accession"] not in seen]

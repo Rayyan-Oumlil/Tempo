@@ -150,3 +150,47 @@ def test_an_issuer_signalled_recently_is_skipped_even_for_a_new_cluster_event(tm
     week_later = Ledger(tmp_path / "l.jsonl", clock=lambda: datetime(2026, 11, 11, 9, 0, tzinfo=ET).timestamp())
     fresh = clusters([buy("3", 150_000, filed="2026-11-10"), buy("4", 150_000, filed="2026-11-10")], date(2026, 11, 10))
     assert fresh and new_signals(fresh, week_later) == []   # different event id, same issuer, 8 days later: still skipped
+
+
+from tempo.edgar import EdgarError
+from tempo.insider import load_cache, process_day
+
+
+def fake_fetcher(urls, fail_on=None):
+    def fetch(url):
+        urls.append(url)
+        if "daily-index" in url:
+            return INDEX
+        if fail_on and fail_on in url:
+            raise EdgarError(url, "HTTP 500")
+        return form4()
+    return fetch
+
+
+def test_process_day_uses_the_real_url_layout_and_caches_purchases(tmp_path):
+    urls = []
+    stats = process_day(date(2026, 11, 2), fetcher=fake_fetcher(urls), cache=tmp_path / "c.jsonl", say=lambda *_: None)
+    assert urls[0] == "https://www.sec.gov/Archives/edgar/daily-index/2026/QTR4/form.20261102.idx"
+    assert urls[1:] == ["https://www.sec.gov/Archives/edgar/data/1889614/0001889614-26-000011.txt",
+                        "https://www.sec.gov/Archives/edgar/data/66740/0000066740-26-000314.txt"]
+    assert stats == {"filings": 2, "new": 2, "purchases": 2, "failed": 0}
+    seen, buys = load_cache(tmp_path / "c.jsonl")
+    assert seen == {"0001889614-26-000011", "0000066740-26-000314"} and len(buys) == 2
+
+
+def test_a_second_run_downloads_no_filing_again(tmp_path):
+    cache = tmp_path / "c.jsonl"
+    process_day(date(2026, 11, 2), fetcher=fake_fetcher([]), cache=cache, say=lambda *_: None)
+    urls = []
+    stats = process_day(date(2026, 11, 2), fetcher=fake_fetcher(urls), cache=cache, say=lambda *_: None)
+    assert len(urls) == 1 and stats["new"] == 0   # only the index
+
+
+def test_a_failed_filing_is_retried_next_time_not_marked_as_seen(tmp_path):
+    cache = tmp_path / "c.jsonl"
+    stats = process_day(date(2026, 11, 2), fetcher=fake_fetcher([], fail_on="66740"), cache=cache, say=lambda *_: None)
+    assert stats["failed"] == 1 and stats["purchases"] == 1
+    assert "0000066740-26-000314" not in load_cache(cache)[0]
+    urls = []
+    again = process_day(date(2026, 11, 2), fetcher=fake_fetcher(urls), cache=cache, say=lambda *_: None)
+    assert again["new"] == 1 and again["failed"] == 0 and len(urls) == 2   # the index and only the failed filing
