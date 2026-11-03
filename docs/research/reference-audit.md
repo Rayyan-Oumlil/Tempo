@@ -42,3 +42,27 @@
 | Kill switch | **Partly**: `flatten` handles longs only; no global cancel, no entry block |
 | Daily loss limit, exit-class rule | **No** |
 | Pre-registered gate, honest backtest | **No** (the roadmap gate is a paragraph) |
+
+## 2026-11-02 evening: second audit, five more references
+
+Cloned shallow into `Trading/reference/`: **freqtrade** (68k Python lines, 82k test lines), **thetagang** (21k, 22k test), **vnpy** (16k, 2.7k test), **qlib** (70k), **icli** (24k, no tests). Read, not run. I read the order-handling code of thetagang, the protections and bias-analysis code of freqtrade, and grepped icli and vnpy for specific questions; I did not read them whole.
+
+| Repo | What it is | Take | Skip |
+|---|---|---|---|
+| **thetagang** | Production IBKR bot on `ib_async`, closest to Tempo | Order supervision in `order_execution.py`: a rejection can arrive as `Inactive` or as `Cancelled` plus error 201; an external cancel is 202; unknown codes fail closed. The reason can arrive after the status, so wait up to 2 s for it. Re-send only the unfilled remainder. | Options strategies, roll logic, config models |
+| **freqtrade** | Largest open-source bot (crypto) | `plugins/protections/`: MaxDrawdown lock over a window, StoplossGuard (N stop-outs in a window pauses trading), CooldownPeriod. Lookahead and recursive-bias analysis tools. | Crypto, hyperopt, FreqAI, Telegram |
+| **vnpy** | Chinese and crypto framework | Nothing: the engine is an event bus, there is no risk layer to copy | All of it |
+| **qlib** | Microsoft ML research platform | Nothing now; relevant only for large factor research | All of it |
+| **icli** | IBKR command line on `ib_async`, no tests | Runs `whatIfOrder` on every leg of a bracket before sending | The rest |
+
+## Tempo against them: gaps found
+
+Facts checked in Tempo's code are marked (checked).
+
+1. **Broker rejection reasons are not recorded** (checked: no code in `tempo/` reads error codes or `whyHeld` after sending; `record_outcome` stores status, fills and commission only). A rejected or externally cancelled order therefore stays "unresolved" and needs `--accept-missing`. thetagang shows the reason is available from `ib_async` shortly after the status. Whether `trade.log` carries the error code in our installed version is **not yet checked**.
+2. **Only a one-day loss limit.** freqtrade's protections suggest two more locks: a drawdown over several days, and "N stop-outs in a row pauses entries". Neither exists in Tempo. They matter once a strategy trades unattended, not before.
+3. **`whatIfOrder` is not in the order path** (checked: its only use is the read-only smoke test, `tempo/smoke.py:86`). icli previews every bracket leg. A margin and commission preview inside the order door would refuse an entry the account cannot afford before it reaches the broker.
+4. **Limit prices are not rounded to the tick.** An off-tick price comes back as error 110 and `Cancelled` (documented in `ibkr-gotchas.md`), so it fails safe, but noisily. thetagang rounds to 2 decimals; a real fix reads `minTick` per contract.
+5. **Not a gap:** look-ahead bias in the backtester. A strategy only receives closes up to day t and fills at t+1 (`backtest.py`, tested), so the failure freqtrade's lookahead tool detects cannot occur by construction.
+
+Nothing here was built. Ranking by risk reduced per line of code: 1, then 3, then 2 (only when unattended running is chosen), then 4.

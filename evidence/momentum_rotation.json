@@ -1,0 +1,57 @@
+{
+  "_note": "Pre-registered 2026-11-02 evening, BEFORE any result for this strategy existed (only SPY was ever backtested, with the SMA rule). Do not edit to fit a result. To change a criterion, add a dated entry to docs/research/log.md saying why, then edit.",
+  "idea": "Cross-sectional 12-1 momentum rotation over ETFs, monthly. Source: Jegadeesh-Titman 1993; mmr STRATEGY_EVALUATION (its one durable result). See docs/research/log.md.",
+  "universe": [
+    "SPY",
+    "QQQ",
+    "IWM",
+    "EFA",
+    "EEM",
+    "VNQ",
+    "AGG",
+    "TIP",
+    "GLD",
+    "DBC"
+  ],
+  "universe_note": "Fixed now, by asset-class coverage, not by performance. Known bias: every one of these still exists, so survivorship flatters the result somewhat. Sample starts when all ten have data.",
+  "rule": {
+    "score": "close[t-21] / close[t-252] - 1 on the last trading day of each month (skips the latest month)",
+    "hold": "top 3 by score, only those with score > 0; empty slots stay in cash",
+    "weights": "equal, 1/3 of equity per slot, rebalanced monthly",
+    "fill": "next trading day's close",
+    "cash_return": "0 (conservative: IBKR pays some interest)",
+    "costs": "tempo.backtest.Costs defaults"
+  },
+  "benchmarks": [
+    "SPY buy and hold",
+    "equal weight of all ten, rebalanced monthly, same engine and costs"
+  ],
+  "variants_tried": {
+    "count": 5,
+    "list": [
+      "12-1 top3 (primary)",
+      "6-1 top3",
+      "9-1 top3",
+      "12-1 top2",
+      "12-1 top4"
+    ],
+    "note": "Only the primary can pass. The other four are a fragility check and are all reported."
+  },
+  "negative_control": "200 versions with the SAME random permutation of days applied to all ten assets: keeps each asset's returns and the correlations between assets, destroys serial structure (what momentum needs).",
+  "pass_all_of": [
+    "primary net Sharpe > SPY buy-and-hold Sharpe AND > equal-weight-all Sharpe (selection must add value beyond diversification)",
+    "primary max drawdown shallower than SPY buy and hold",
+    "primary net Sharpe > 0 in both halves of the sample (split at the middle date)",
+    "primary beats at least 95% of the shuffled controls on Sharpe (necessary, not sufficient)",
+    "at least 4 of the 5 variants have net Sharpe > equal-weight-all Sharpe"
+  ],
+  "if_fail": "Report it as a failure. No retuning, no extra variants. Continue research on other strategies.",
+  "if_pass": "Still not proof of an edge: next step is paper trading per evidence/gate.json (100 round trips, 60 days, net positive). Not real money.",
+  "universe_amendment": {
+    "date": "2026-11-03",
+    "change": "TLT -> AGG, IEF -> TIP",
+    "reason": "IBKR returns TLT history only from 2016-02 and IEF only from 2017-08 (they moved listing to NASDAQ; older history is not served), which would cut the common sample to 9 years, below the pre-registered 10-year minimum. AGG and TIP (NYSE Arca) have the full history from 2006-11.",
+    "made_before_any_result": true,
+    "cost": "The long-duration Treasury sleeve (TLT) is gone, so the bond side is broad and inflation-linked, not long Treasuries. Noted as a limitation."
+  }
+}
