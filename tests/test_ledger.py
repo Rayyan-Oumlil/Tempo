@@ -144,3 +144,25 @@ def test_the_status_line_refuses_to_conclude_before_enough_scores():
 
 def test_a_score_of_exactly_zero_is_not_a_hit():
     assert summarize([{"net_excess": 0.0}, {"net_excess": 0.01}])[3] == 0.5
+
+
+from tempo.ledger import cli_add
+
+
+def test_cli_add_records_a_long_call_with_its_features(tmp_path):
+    ledger = make_ledger(tmp_path)
+    rec = cli_add(["claude_earnings_v1", "AMD", "+1", "2026Q3", "--confidence", "3", "--reason", "strong guide", "--url", "http://x", "--eps", "1.97"], ledger)
+    assert rec["direction"] == 1 and rec["signal_id"] == "claude_earnings_v1:AMD:2026Q3"
+    assert rec["features"] == {"confidence": 3, "reason": "strong guide", "release_url": "http://x", "eps_estimate": 1.97}
+
+
+@pytest.mark.parametrize("word,expected", [("-1", -1), ("short", -1), ("long", 1), ("+1", 1)])
+def test_cli_add_understands_direction_words(tmp_path, word, expected):
+    assert cli_add(["s", "T", word, "e1", "--confidence", "2"], make_ledger(tmp_path))["direction"] == expected
+
+
+def test_cli_add_refuses_a_confidence_outside_one_to_five_and_unknown_directions(tmp_path):
+    with pytest.raises(SignalRefused):
+        cli_add(["s", "T", "+1", "e1", "--confidence", "9"], make_ledger(tmp_path))
+    with pytest.raises(SignalRefused):
+        cli_add(["s", "T", "maybe", "e1", "--confidence", "3"], make_ledger(tmp_path))

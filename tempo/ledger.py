@@ -14,9 +14,11 @@ Rules enforced here:
   * no verdict is printed before MIN_SCORED scored signals exist for a source and horizon.
 
 Usage: python -m tempo.ledger            show counts and statistics per source and horizon
+       python -m tempo.ledger add SOURCE SYMBOL long|short|+1|-1 EVENT_ID --confidence 1-5 [--reason TEXT] [--url URL] [--eps X]
 """
 from __future__ import annotations
 
+import argparse
 import sys
 import time
 from datetime import datetime
@@ -128,9 +130,34 @@ def report(ledger: Ledger | None = None) -> str:
     return "\n".join(lines)
 
 
+DIRECTIONS = {"+1": 1, "1": 1, "long": 1, "-1": -1, "short": -1}
+
+
+def cli_add(argv: list[str], ledger: Ledger | None = None) -> dict:
+    """Record one call from the command line (used for Claude's in-session readings)."""
+    p = argparse.ArgumentParser(prog="tempo.ledger add")
+    p.add_argument("source"), p.add_argument("symbol"), p.add_argument("direction"), p.add_argument("event_id")
+    p.add_argument("--confidence", type=int, required=True)
+    p.add_argument("--reason", default=""), p.add_argument("--url", default=""), p.add_argument("--eps", type=float)
+    a = p.parse_args(argv)
+    if a.direction not in DIRECTIONS:
+        raise SignalRefused(f"direction must be long, short, +1 or -1, got {a.direction!r}")
+    if not 1 <= a.confidence <= 5:
+        raise SignalRefused(f"confidence must be 1 to 5, got {a.confidence}")
+    features = {"confidence": a.confidence, "reason": a.reason, "release_url": a.url}
+    if a.eps is not None:
+        features["eps_estimate"] = a.eps
+    return (ledger or Ledger()).record_signal(source=a.source, symbol=a.symbol, direction=DIRECTIONS[a.direction],
+                                              event_id=a.event_id, features=features)
+
+
 if __name__ == "__main__":
     try:
+        if len(sys.argv) > 1 and sys.argv[1] == "add":
+            rec = cli_add(sys.argv[2:])
+            print(f"recorded {rec['signal_id']} {'long' if rec['direction'] == 1 else 'short'} on {rec['date_et']}")
+            raise SystemExit(0)
         print(report())
-    except (OSError, ValueError) as err:
+    except (OSError, ValueError, SignalRefused) as err:
         print(f"[FAIL] {err}", file=sys.stderr)
         raise SystemExit(1)
