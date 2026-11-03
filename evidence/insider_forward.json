@@ -21,7 +21,8 @@
     "reported_not_criteria": [
       "1 and 5 day results",
       "result by purchase size and by number of insiders",
-      "median market price of the cluster"
+      "median market price of the cluster",
+      "SENSITIVITY (added 2026-11-03 after seeing the composition of the first 15 signals and BEFORE any return existed; it does not change any criterion): the same statistics recomputed without signals whose symbol is 'NONE', or is 5 letters ending in U or W (SPAC units and warrants), or whose volume-weighted price is a whole-dollar number with at least 3 insiders (IPO allocations rather than open-market purchases)"
     ]
   },
   "known_limits": [

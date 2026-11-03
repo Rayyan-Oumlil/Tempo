@@ -315,3 +315,21 @@ Scoring: `python -m tempo.ledger_score` (needs Gateway) writes scores as days pa
 
 ## 2026-11-03 (evening): insider-purchase forward test pre-registered (before the collector was built)
 Protocol in `evidence/insider_forward.json`. Feasibility probe (read-only): the SEC's daily index for 2026-11-02 exists (940 Form 4 index lines, about 470 filings once the owner and issuer lines of the same filing are merged); the index for the current day is not generated until overnight. Rule: at least 2 distinct insiders making open-market purchases (code P, not flagged as a pre-planned 10b5-1 trade) at a volume-weighted price of at least 5 USD for at least 200,000 USD in the trailing 7 days, one long signal per issuer per 30 days, a harsher 50 bps round-trip cost assumption stored with each signal, horizons 1, 5 and 21 days against SPY. Full test: 100 scored signals at 21 days, mean net excess above 1.0%, t above 2.0, hit rate above 52%, positive in both halves, and fewer than 10% unscoreable.
+
+### 2026-11-03 (night): first insider collection, 15 signals recorded (source `insider_cluster_v1`)
+Code committed first (085d5f7, URL fix 4aea6c4: the first attempt used a wrong index URL, failed cleanly, wrote nothing). Run: 5 trading days of filings (2026-10-27, 28, 29, 30 and 11-02, the 7-day window ending 11-02): 1,600 Form 4 filings read, 247 counted purchases (65, 34, 61, 31 and 56 per day), 0 failed downloads, 15 clusters, all recorded as signals at the clock time of the run (entry: open of 2026-11-04).
+
+| Symbol | Insiders | Value USD | VWAP | Symbol | Insiders | Value USD | VWAP |
+|---|---|---|---|---|---|---|---|
+| ACN | 2 | 3,200,889 | 246.22 | NONE | 2 | 1,757,190 | 15.95 |
+| ASPE | 13 | 37,999,995 | 15.00 | NPB | 5 | 1,819,349 | 15.39 |
+| BBTX | 2 | 12,000,000 | 16.00 | OCFC | 2 | 267,777 | 17.85 |
+| CTEV | 11 | 3,356,212 | 23.69 | ROL | 2 | 99,913,331 | 34.59 |
+| GOLD | 3 | 3,927,258 | 39.27 | SAMG | 2 | 348,694 | 10.44 |
+| HBAN | 2 | 453,554 | 16.99 | SCQCU | 3 | 2,665,900 | 10.00 |
+| LRN | 3 | 12,240,310 | 78.98 | TTMI | 2 | 1,342,810 | 89.52 |
+| LYCA | 9 | 38,298,575 | 18.50 | | | | |
+
+**What the composition shows (before any returns exist).** The rule as registered lets in several non-informative cases: ASPE (13 insiders at exactly 15.00) and SCQCU (a SPAC unit at exactly 10.00) look like IPO or SPAC allocations, not open-market conviction; "NONE" is not a ticker (will likely be unscoreable); ROL's 99.9M is two very large holders, not typical insiders. Signals are immutable and the registered criteria stand, so all 15 stay in the registered test. A mechanical sensitivity analysis (excluding symbol "NONE", 5-letter symbols ending in U or W, and whole-dollar VWAP with at least 3 insiders) was added to `evidence/insider_forward.json` as a reported number, not a criterion, on 2026-11-03 before any return existed. A cleaner rule would be a new source name with new signals; it is not started.
+**Pace:** about 3 clusters a day, so 100 signals take roughly 5 to 6 weeks and the 21-day scoring pushes a verdict to January 2027 at the earliest. The unscoreable-share criterion (under 10%) is already at risk from "NONE" and the SPAC unit (2 of 15).
+Routine: each morning `python -m tempo.insider <previous trading day>` (the SEC builds a day's index overnight; run any missed days in order), then `python -m tempo.ledger_score` and `python -m tempo.ledger`.
