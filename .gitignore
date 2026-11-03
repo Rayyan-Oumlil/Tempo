@@ -6,3 +6,4 @@ journal/
 state.json
 data/
 .coverage
+ledger/*.lock
