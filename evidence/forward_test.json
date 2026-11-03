@@ -1,0 +1,22 @@
+{
+  "_note": "Pre-registered 2026-11-03 (late), BEFORE any forward data exists. Do not edit to fit a result. To change a criterion, add a dated entry to docs/research/log.md saying why, then edit.",
+  "purpose": "The only evidence that cannot be overfitted: judge frozen rules on data that did not exist when they were fixed. The historical test of the same rules (evidence/mean_reversion_etf.json) FAILED its registered verdict but survived costs; a pass here would be new evidence, a fail would close the idea.",
+  "frozen_rules": "Exactly the four variants of evidence/mean_reversion_etf.json, unchanged: RSI(2) on SPY, IBS on SPY, RSI(2) on QQQ, IBS on QQQ. No new variants, no changed thresholds, no filters.",
+  "freeze_date": "2026-11-03",
+  "start": "Flat from the close of 2026-11-03. A variant enters only on a signal change from 0 to 1 decided at a close on or after the freeze date; a signal that is already 1 at the freeze date is ignored until it has gone back to 0. Fills at the next open, as in the historical test.",
+  "costs": "tempo.backtest.Costs commission and the SEC fee, plus 3 bps per side slippage (the historical stress level, not the 1 bp base)",
+  "capital": 100000,
+  "how_to_run": "python -m tempo.data SPY --ohlc ; python -m tempo.data QQQ --ohlc ; python -m tempo.forward",
+  "no_reading_into_small_samples": "No verdict is allowed before the pooled count of completed round trips across the four variants reaches 60, or 2028-11-03, whichever comes first. Until then the report shows counts and averages with the label NOT ENOUGH TRIPS and nothing else is concluded.",
+  "pass_all_of_at_evaluation": [
+    "pooled average net return per completed round trip (after costs and 3 bps slippage per side) is above 0.10%",
+    "t-statistic of the pooled per-trip net returns is above 2.0",
+    "no single variant contributes more than 60% of the pooled round trips' total profit (not one lucky variant)"
+  ],
+  "reported_not_criteria": [
+    "each variant's trips, average net per trip, win rate",
+    "net CAGR and Sharpe of each variant over the forward window against SPY or QQQ buy and hold over the same window"
+  ],
+  "if_fail": "Report it as a failure and close the mean reversion family: stop spending effort on it.",
+  "if_pass": "Still not real money: next step is the gate in evidence/gate.json (paper trading with measured fills through tempo/orders.py, employer and tax checks)."
+}
