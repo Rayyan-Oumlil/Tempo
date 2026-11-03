@@ -8,6 +8,7 @@
 | [research/log.md](research/log.md) | Dated findings with numbers, append-only, corrections written underneath. |
 | [research/reference-audit.md](research/reference-audit.md) | What we took and skipped from each reference repo. |
 | [research/swing-trading-research.md](research/swing-trading-research.md) | Deep research on swing trading: every idea, the evidence for and against, costs, and the ranked test queue. Claims tagged by source quality. |
+| [research/what-people-do.md](research/what-people-do.md) | What people actually run (tactical allocation, trend, options income, insider and LLM signals, prop firms), with what survives scrutiny. Claims tagged by source quality. |
 | [roadmap.md](roadmap.md) | What's built, what's next, and the gate before any real money. |
 | [research/resources.md](research/resources.md) | Repos, books, courses, papers and reality checks, with what to read first. |
 | [research/youtube-transcripts-analysis.md](research/youtube-transcripts-analysis.md) | What we learned from 14 YouTube videos and which claims to doubt. |
