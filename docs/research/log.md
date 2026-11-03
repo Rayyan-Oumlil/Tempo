@@ -174,3 +174,25 @@ Method and limits: read the READMEs and research files of the cloned repos (agen
 
 ## 2026-11-03: pairs trading pre-registered (before any data was downloaded)
 Reordered from the earlier plan: the pairs test goes before shadow mode, because shadow mode has no strategy to feed yet and would be infrastructure ahead of need. Literature (search summaries, papers not read): Gatev et al. (1962-1997) found positive returns; Do and Faff extended to 2009 and found a downward trend, and with commissions, market impact and short fees pairs profits stay positive but much more modest; a review says after realistic costs the distance approach largely disappears in recent years outside turbulent periods. IBKR borrow: annualized, charged every calendar day, can change intraday and general-collateral names can turn hard to borrow; one academic study puts general-collateral fees around 17 bps on average (older sample), so 0.3% is a conservative assumption, 1.5% the stress case. Everything is fixed in `evidence/pairs_trading.json`: ten pairs chosen by industry rationale, one primary rule plus four fragility variants, eight pass criteria. Stated expectation: FAIL is the likely result. Result will be appended below, pass or fail.
+
+### 2026-11-03: result, pairs trading on daily closes: FAIL (3 of 8 criteria failed)
+Run once, `python -m tempo.pairs_report` (code committed first, 6abbd2c). Nine pairs (XOM/CVX, HD/LOW, JPM/BAC, V/MA, WMT/TGT, UPS/FDX, GLD/SLV, EWA/EWC, MS/GS); **KO/PEP dropped by the registered rule** (IBKR serves PEP only from 2017-12, the same NASDAQ-transfer limitation as TLT and IEF). 4,685 common days, 2008-03-19 to 2026-11-02 (18.6 years), 100,000 split equally, costs at `Costs()` defaults, borrow 0.3% a year, today's unfinished bar dropped.
+
+| Variant | Sharpe | maxDD | 1st half | 2nd half | orders | costs USD | borrow USD |
+|---|---|---|---|---|---|---|---|
+| **W=60 E=2.0 (primary)** | 0.26 | -6.4% | 0.44 | 0.04 | 3,592 | 6,897 | 1,200 |
+| W=40 E=2.0 | 0.06 | -9.5% | 0.40 | -0.32 | 4,554 | 8,598 | 1,279 |
+| W=90 E=2.0 | 0.13 | -4.9% | 0.28 | -0.05 | 2,628 | 4,954 | 998 |
+| W=60 E=1.5 | 0.14 | -9.0% | 0.31 | -0.06 | 5,138 | 9,958 | 1,581 |
+| W=60 E=2.5 | -0.02 | -6.2% | 0.08 | -0.14 | 2,148 | 3,871 | 722 |
+
+Primary per pair, net P&L: V/MA +10,733; MS/GS +4,179; HD/LOW +2,428; EWA/EWC +1,828; XOM/CVX +874; JPM/BAC -1,842; WMT/TGT -2,219; UPS/FDX -1,560; GLD/SLV -3,303. Sum +11,118, of which V/MA alone is +10,733, so without it the portfolio made about +385 over 18.6 years. Gross before costs and borrow was about 19,200 (11,118 + 6,897 + 1,200), roughly 1% a year on 100,000.
+
+Negative control: real Sharpe 0.26, shuffled mean -0.15, best 0.61, real beats 98%. Sharpe at 1.5% borrow 0.16. Correlation with SPY 0.18. Pairs with positive P&L 56%.
+
+Criteria: FAIL Sharpe >= 0.5 (0.26); FAIL Sharpe > 0.3 at 1.5% borrow (0.16); PASS beats 95% of shuffles (98%); PASS positive in both halves (0.44, 0.04); PASS 4 of 5 variants above 0 (4); PASS correlation with SPY below 0.3 (0.18); FAIL 60% of pairs positive (56%); PASS max drawdown shallower than 20% (-6.4%).
+
+**What it says.** There is a small real mean-reversion effect (it beats 98% of shuffles, and the shuffled runs lose about 0.15 Sharpe, which is the cost of trading noise), but about 3,600 orders eat more than a third of an already small gross gain, and the second half is near zero (0.04), consistent with the literature that simple pairs profits have declined. The whole net result rests on one pair. Not a strategy. No retuning, no dropping pairs.
+
+**Limits.** Survivorship (all pairs exist today), borrow fee assumed, fills at the close with 1 bp slippage, hedge ratio fixed at 1.
+**Running tally of pre-registered daily-data tests: three, all failed** (SMA 200 trend on SPY, 12-1 momentum rotation, pairs).
