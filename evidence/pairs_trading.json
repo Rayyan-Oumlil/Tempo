@@ -1,0 +1,35 @@
+{
+  "_note": "Pre-registered 2026-11-03, BEFORE any pairs data was downloaded or any result existed. Do not edit to fit a result. To change a criterion, add a dated entry to docs/research/log.md saying why, then edit.",
+  "idea": "Dollar-neutral pairs trading on daily closes: when the log price ratio of two same-industry stocks or ETFs stretches, short the rich leg and buy the cheap one, exit when it reverts. Sources: Gatev, Goetzmann and Rouwenhorst (NBER w7032); Do and Faff 2010 and 2012 (profits declined, and after costs and short fees are modest or largely gone outside turbulent periods; search summaries, papers not read). Expectation stated up front: a FAIL is the likely outcome.",
+  "candidate_pairs": [["XOM", "CVX"], ["KO", "PEP"], ["HD", "LOW"], ["JPM", "BAC"], ["V", "MA"], ["WMT", "TGT"], ["UPS", "FDX"], ["GLD", "SLV"], ["EWA", "EWC"], ["MS", "GS"]],
+  "pair_selection": "Fixed now by economic rationale (same industry or same asset class), not by any backtest. Rule for data: a pair is dropped only if either leg has fewer than 15 years of daily history on IBKR, and the dropped pairs are listed in the log. If fewer than 6 pairs remain, the test is reported as inconclusive, not as pass or fail.",
+  "rule": {
+    "spread": "log(close A) - log(close B), hedge ratio fixed at 1 (equal dollars per leg, no fitted beta)",
+    "zscore": "(spread - mean of last W days) / std of last W days, using closes through day t only",
+    "enter": "z > E: short A and buy B. z < -E: buy A and short B",
+    "exit": "|z| < 0.5, or |z| > 4.0 (stop), or 30 trading days held (time stop)",
+    "fill": "signal at close t, filled at close t+1",
+    "sizing": "total capital 100,000 split equally across pairs; each leg is half of the pair's capital; whole shares",
+    "costs": "tempo.backtest.Costs defaults on every order, both legs",
+    "borrow": "0.3% a year on the market value of shorts, accrued daily (assumed; IBKR notes short credit interest can offset some of it and rates can change intraday). Sensitivity run at 1.5%.",
+    "cash_return": "0"
+  },
+  "variants_tried": {
+    "count": 5,
+    "list": ["W=60 E=2.0 (primary)", "W=40 E=2.0", "W=90 E=2.0", "W=60 E=1.5", "W=60 E=2.5"],
+    "note": "Only the primary can pass. The other four are a fragility check and are all reported."
+  },
+  "negative_control": "200 versions with the same random permutation of days applied to all assets (keeps each asset's returns and the correlations, destroys mean reversion of the spread).",
+  "pass_all_of": [
+    "primary portfolio (equal weight of the surviving pairs) net Sharpe >= 0.5 at 0.3% borrow",
+    "primary net Sharpe > 0.3 at 1.5% borrow",
+    "primary beats at least 95% of the shuffled controls on Sharpe",
+    "primary Sharpe > 0 in both halves of the sample",
+    "at least 4 of the 5 variants have Sharpe > 0",
+    "absolute correlation of the portfolio's daily returns with SPY below 0.3 (the market-neutral claim)",
+    "at least 60% of the individual pairs have positive net P&L (not one lucky pair)",
+    "max drawdown shallower than 20%"
+  ],
+  "if_fail": "Report it as a failure. No retuning, no extra variants, no dropping pairs after seeing results.",
+  "if_pass": "Still not proof of an edge: next step is shadow mode and paper trading per evidence/gate.json. Not real money."
+}
