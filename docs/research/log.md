@@ -202,3 +202,28 @@ Full write-up with every claim tagged by source quality: `docs/research/swing-tr
 
 ## 2026-11-03: overnight drift pre-registered (before any open-price data)
 First of the ranked swing-test queue. Fixed in `evidence/overnight_drift.json`: SPY primary, QQQ confirmation, buy at the close and sell at the next open, costs plus slippage swept from 0 to 10 bps per side, seven pass criteria including the break-even slippage as a reported number. A shuffle control is deliberately not used (a mean drift is unchanged by shuffling). Expectation stated up front: gross effect positive, net uncertain; a pass needs survival at 3 bps per side and a t-statistic above 3.0.
+
+### 2026-11-03: result, overnight drift on SPY and QQQ: FAIL (5 of 7 criteria failed)
+Run once, `python -m tempo.overnight_report` (code committed first, 1e12ce8). Buy the close, sell the next open, every day; 19.9 years (2006-11-08 to 2026-11-02), ADJUSTED_LAST bars (adjusted opens and closes checked consistent on eight SPY ex-dividend dates: the adjusted overnight return differs from the raw one by the dividend, 0.25 to 0.34%, and normal days match), today's unfinished bar dropped, `Costs()` defaults plus slippage swept, capital 100,000.
+
+| | SPY | QQQ |
+|---|---|---|
+| Gross mean overnight return per day | +0.0309% | +0.0442% |
+| Gross mean intraday (open to close) per day | +0.0171% | +0.0237% |
+| Net CAGR at 0 / 1 / 3 / 5 / 10 bps per side | 5.2% / -0.0% / -10.6% / -23.4% / -27.3% | 7.0% / 1.8% / -8.5% / -22.8% / -29.1% |
+| Net Sharpe at 1 bp (buy and hold) | 0.06 (0.63) | 0.20 (0.77) |
+| Max drawdown at 1 bp (buy and hold) | -44.8% (-55.4%) | -35.7% (-53.4%) |
+| 1st half / 2nd half / post-2010 CAGR at 1 bp | -3.8% / 3.9% / 1.4% | -2.0% / 5.7% / 3.6% |
+| t-statistic of mean daily net return at 1 bp | 0.25 | 0.90 |
+| **Break-even slippage per side** | **0.99 bps** | **1.35 bps** |
+| Orders / total costs at 1 bp | 10,048 / 115,783 USD | 10,050 / 157,452 USD |
+| Buy and hold CAGR | 10.8% | 15.8% |
+
+SPY with 10,000 instead of 100,000 at 1 bp: CAGR -13.7% (the 1.00 minimum commission). SPY by year at 1 bp swings from -27.2% (2008) to +16.4% (2024).
+
+Criteria: FAIL Sharpe at or above buy and hold (0.06 vs 0.63); FAIL CAGR > 0 at 3 bps (-10.6%); FAIL positive in both halves (1st half -3.8%); PASS post-2010 positive (1.4%); FAIL t > 3.0 (0.25); PASS drawdown shallower than buy and hold (-44.8% vs -55.4%); FAIL QQQ also passes.
+
+**What it says.** The effect is there gross: the average night beats the average day (SPY +0.031% vs +0.017%; QQQ +0.044% vs +0.024%), but the literature's strong form, that the whole premium is earned overnight, does not hold in 2006 to 2026: the daytime leg is positive too. More important, the trade is two orders a day, about 10,000 orders in 20 years, and costs consume the whole edge: break-even slippage is about 1 bp per side, which equals our assumed 1 bp, and even with zero slippage net CAGR is 5.2% against 10.8% for simply holding. The 10,000 account loses 13.7% a year to the 1.00 minimum commission alone. Not a strategy.
+
+**Limits.** The SEC sell fee is the 2026 rate (20.60 per million) applied to all years; it was lower or zero in some years (about 9% of total costs here, not enough to change the verdict). Fills at the official auction prices could beat 1 bp, but even at 0 bps the result trails buy and hold. Slippage in real MOC and MOO fills is still unmeasured.
+**Running tally of pre-registered swing-style tests: four, all failed** (SMA 200 trend, 12-1 momentum rotation, pairs, overnight drift). Lesson common to all four: a small real effect, eaten by trading costs.
