@@ -1,0 +1,42 @@
+{
+  "_note": "Pre-registered 2026-11-03 at about 16:35 ET, BEFORE any release was read for this test. Do not edit to fit a result. To change a rule, add a dated entry to docs/research/log.md saying why, then edit.",
+  "purpose": "A forward test of whether Claude's reading of an earnings press release predicts the stock's return relative to SPY over the following days. Historical tests of LLM text signals are contaminated by memorization and look-ahead (Lopez-Lira and Tang; Kim, Muhn, Nikolaev), so the calls are recorded NOW in the signal ledger and scored later. Evidence base and caveats: docs/research/what-people-do.md section 2F.",
+  "source_name": "claude_earnings_v1",
+  "who_reads": "Claude, in-session, one release at a time. No API automation yet (spend cap not decided by the owner).",
+  "universe_rule": "Each trading evening, the companies listed as reporting AFTER the market close on the Digrin earnings calendar for that day, in the calendar's order, keeping only US-listed tickers (no exchange suffix such as .TO, .SA, .MX). The pilot takes the first 10 for which the company's own press release can be retrieved. A company is skipped ONLY because its release cannot be retrieved or has not been published yet; every skip and its reason is written in docs/research/log.md. Content, size or how interesting a company looks is never a reason to skip or to add one.",
+  "allowed_inputs": [
+    "the company's own earnings press release (extracts through the fetch tool)",
+    "the EPS estimate shown on the calendar"
+  ],
+  "forbidden_inputs": [
+    "any price, volume or after-hours move",
+    "any news, commentary or analyst note about the reaction",
+    "anything dated after the release"
+  ],
+  "output": "a forced call, no abstaining: direction +1 (expect the stock to beat SPY) or -1 (expect it to lag SPY); a confidence from 1 to 5; one sentence of reasons. Recorded in the ledger (features: confidence, reason, eps_estimate, release_url) immediately after reading, before looking at the next company.",
+  "ledger": "tempo/ledger.py; the ledger stamps the clock, entry is the open of the first trading day after the ledger date, horizons 1, 5 and 21 trading days, measured against SPY, with an assumed 6 bps round trip",
+  "pilot": "10 signals tonight, to test the pipeline and measure the effort per document. No conclusion of any kind from a pilot.",
+  "full_test": {
+    "minimum_signals": 100,
+    "primary_horizon_trading_days": 5,
+    "pass_all_of": [
+      "mean net excess return at 5 days above 0.30%",
+      "t-statistic of the 5-day net excess returns above 2.0",
+      "hit rate (share of positive net excess) at 5 days above 55%",
+      "a permutation test (shuffle the calls across the signals 10,000 times) gives p below 0.05 for the observed mean net excess at 5 days"
+    ],
+    "reported_not_criteria": [
+      "1 and 21 day results",
+      "result split by confidence 4 to 5 against 1 to 3",
+      "result by sector if known"
+    ]
+  },
+  "known_limits": [
+    "The reader (Claude) has general knowledge about these companies from before its training cutoff; the results being read are new, so outcomes cannot be remembered, but priors cannot be removed.",
+    "Releases come out after the close; entry at the next open means the overnight gap is already in the price. The test measures what remains after the gap, which is what a retail trader could capture, not the full reaction.",
+    "Extracts come through a fetch tool that summarizes pages, so the reading is of quoted extracts, not the whole document.",
+    "The reading is not automated, so volume is limited by session effort; 100 signals may take weeks."
+  ],
+  "if_fail": "Report it as a failure and stop spending on LLM earnings readings.",
+  "if_pass": "Still not proof of an edge and not real money: next is a second independent period, then the gate in evidence/gate.json."
+}
