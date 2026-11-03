@@ -230,3 +230,25 @@ Criteria: FAIL Sharpe at or above buy and hold (0.06 vs 0.63); FAIL CAGR > 0 at 
 
 ## 2026-11-03: low-exposure mean reversion on SPY and QQQ pre-registered (before any signal was computed)
 Second of the ranked swing queue, fixed in `evidence/mean_reversion_etf.json`: RSI(2) with a 200-day trend filter (Connors) and internal bar strength, long or flat, four variants (two rules, two ETFs), eight pass criteria. The key design choice: the literature's signals use the close and assume a fill at the same close, which cannot be done honestly; the primary test fills at the NEXT OPEN, and the optimistic same-close result is reported only as a reference. A shuffled-bar control (whole bars permuted) is used because mean reversion needs serial structure. Expectation stated up front: small positive Sharpe, below buy and hold.
+
+### 2026-11-03: result, low-exposure mean reversion on SPY and QQQ: FAIL (2 of 8 criteria failed, the closest call so far)
+Run once, `python -m tempo.meanrev_report` (code committed first, 7fe7a62). Next-open fills, 19.9 years, ADJUSTED_LAST, today's unfinished bar dropped, `Costs()` plus slippage, capital 100,000, 4 variants tried.
+
+| Variant | Net CAGR at 0 / 1 / 3 / 5 / 10 bps | Sharpe at 1 bp | maxDD | Invested | Round trips | Avg net per trip | Break-even slippage |
+|---|---|---|---|---|---|---|---|
+| **RSI(2) on SPY (primary)** | 3.5 / 3.4 / 3.1 / 2.8 / 2.0% | 0.57 | -15.2% | 10.2% | 151 | +0.46% | 22.9 bps |
+| IBS on SPY | 12.0 / 11.4 / 10.2 / 8.9 / 5.9% | 0.86 | -27.2% | 36.8% | 563 | +0.40% | 20.1 bps |
+| RSI(2) on QQQ | 3.6 / 3.4 / 3.1 / 2.8 / 1.9% | 0.46 | -13.9% | 11.9% | 162 | +0.44% | 21.7 bps |
+| IBS on QQQ | 11.7 / 11.0 / 9.8 / 8.5 / 5.5% | 0.75 | -30.4% | 35.1% | 569 | +0.39% | 19.3 bps |
+| SPY buy and hold | 10.8% | 0.63 | -55.4% | 100% | 1 | | |
+
+Primary: first half 3.5%, second half 3.4%, post-2010 3.2% (Sharpe 0.51), t = 2.55; shuffled-bar control: real Sharpe 0.57, shuffled mean 0.20, best 0.69, real beats 97%; same-close reference (not achievable) CAGR 4.1%, Sharpe 0.69; 10,000 account CAGR 3.3%.
+
+Criteria: FAIL Sharpe at or above buy and hold (0.57 vs 0.63); PASS CAGR > 0 at 3 bps (3.1%); PASS positive in both halves; PASS post-2010 CAGR > 0 and Sharpe >= 0.4 (3.2%, 0.51); FAIL t > 3.0 (2.55); PASS drawdown shallower than buy and hold (-15.2% vs -55.4%); PASS beats 95% of shuffled bars (97%); PASS 3 of 4 variants positive at 3 bps (all four).
+
+**What it says.** First test where the effect survives costs with room to spare (break-even slippage about 20 bps per side, against 1 bp for overnight drift), because these rules trade rarely (151 round trips in 20 years for the primary). The primary is a small, steady, real-looking effect (about 3.4% a year while invested about 10% of the time, with a worst drawdown of -15%), but it does not beat buy and hold on risk-adjusted terms and its t-statistic misses the 3.0 bar. Registered verdict stands: FAIL.
+
+**Exploratory addendum (NOT a test, changes no verdict; the IBS variants were registered but were not the primary).** Full-sample IBS on SPY looks better than buy and hold (CAGR 11.4% vs 10.8%, Sharpe 0.86 vs 0.63, maxDD -27% vs -55%, t = 3.82), but that is dominated by 2008 and 2009 (+42% and +30% against buy and hold's -37% and +26%). Since 2010 it is no better than buy and hold: CAGR 9.1% vs 13.9%, Sharpe 0.81 vs 0.85; since 2015, 8.2% vs 13.5% and 0.73 vs 0.81; since 2020, 10.5% vs 14.7% and 0.82 vs 0.79. IBS on QQQ: since 2010 11.5% vs 18.3%, Sharpe 0.85 vs 0.92. In plain terms: invested a third of the time it earns about the same risk-adjusted return as holding, with a smaller worst loss, but less money. This is the decay the literature warns about (the strong results sit before 2010). Choosing IBS because it looked best after seeing the numbers would be exactly the selection effect the pre-registration guards against (4 variants were tried; and this is the fifth registered test in a row), so IBS is NOT promoted. Any follow-up needs a fresh pre-registration.
+
+**Limits.** Survivorship is not an issue for SPY and QQQ but the sample has a few regimes; RSI(2) and IBS thresholds are the literature's, untuned; same-close reference shows only modest sensitivity to the fill rule (4.1% vs 3.4%); slippage in real market-on-open fills is still unmeasured (but the margin is large: 20 bps).
+**Running tally of pre-registered swing-style tests: five, none passed** (SMA 200 trend, 12-1 momentum rotation, pairs, overnight drift, mean reversion). Pattern: effects that trade often are eaten by costs; effects that trade rarely survive costs but no longer beat the market since 2010.
