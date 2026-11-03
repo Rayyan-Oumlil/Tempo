@@ -151,3 +151,23 @@ Run 1: 7 errors, `ConnectionError` (port open, API handshake timed out; `tempo.h
 
 ## 2026-11-03: broker rejection reasons in the journal (hardening gap 1 from the reference audit)
 Idea from thetagang's order supervision. First version read the error from `trade.log` (ib_async 2.1.0 puts an error code there). **Compared against the real broker, it would have missed the main case:** a 201 rejection (20,000 SPY, far over the account's margin) arrives as status `Inactive` with no error code in `trade.log`; the code exists only on `ib.errorEvent`. 110 and 391 appear in both. 202 ("Order Canceled - reason:") has a blank reason and is also sent for our own cancels, so my planned "cancelled by broker" label was unprovable and was dropped. Final design: a per-connection `errorEvent` listener stores the last informative error on each trade; `record_outcome` journals `reason_code`, `reason_kind`, `reason_text` for orders that did not fully fill. Also learned: a module-level registry keyed by (clientId, orderId) collided across tests (the fake reuses ids), so the listener keeps its state per connection. One probe of mine crashed on the duplicate-order guard (identical order inside the window), which is that guard working. Live: 4 of 4 cases matched IBKR; new permanent live test; full live suite 8 of 8; 385 offline.
+
+## 2026-11-03: what people actually build with Interactive Brokers and Claude (scan of the references plus a GitHub search)
+Method and limits: read the READMEs and research files of the cloned repos (agentic-trading-mcp/Valet, quant-trader, ibkr-algo-trader, mmr, thetagang, icli), read the READMEs of six more repos found by `gh search` (13 IBKR/MCP/Claude projects in total, a small and search-biased sample, not the whole world), and counted strategy words in the code. Keyword counts are crude and only used as a hint.
+
+**Finding 1: public IBKR plus Claude work is mostly plumbing, not strategies.** Most hits are MCP connectors for account monitoring, read-only portfolio tools, or order execution behind guards (code-rabi/interactive-brokers-mcp, the most starred at 228, says "Alpha state" and offers read-only mode). Several say outright that the decision stays with the human or the prompt (Valet: "the investment decision stays with you"). None of the 13 publishes verified live P&L.
+
+**Finding 2: where a style is visible, it is not day trading.**
+| Project | Style (from its own docs) |
+|---|---|
+| Valet plus Vizier skill | Research-driven, multi-horizon (`core` long-term and `tactical`), human in the loop, a deliberate ladder: shadow (journal only) to paper to live read-only to real-money autonomy last |
+| mmr | LLM proposes, human reviews, then approves; ATR-based sizing; its own research found intraday strategies failed and its one survivor is a slow monthly tilt |
+| quant-trader | Daily workflow (morning brief, intraday monitoring, end-of-day summary), classic indicator strategies, decision support, no results reported |
+| thetagang | Options income (the wheel) and portfolio rebalancing; the most starred IBKR-specific bot we found (about 2.8k) |
+| axiom-iq-labs ibkr-mcp-server | The only day-trading-flavoured one: 0DTE SPX options MCP, 7 stars, no results |
+| icli | A manual command-line tool for fast discretionary trading (scalping and 0DTE keywords), human-operated |
+| ibkr-algo-trader | Built a 5-minute intraday bot, then its own `RESEARCH.md` concluded: paper P&L is an upper bound with near-zero live predictive power (IBKR paper fills are top-of-book simulations, delayed data makes 5-minute signals stale), retail day-trader base rates are devastating, the only intraday template with positive claims is opening-range breakout with a relative-volume filter and that evidence is practitioner-grade; the best-evidenced item in its five research reports is inverse-volatility scaling (which Cederburg et al. dispute) |
+
+**Finding 3 (my inference, not a source):** Claude-driven trading clusters at slow horizons (days and longer, human approval) because intraday needs real-time data, low latency and honest fill models that retail IBKR paper accounts do not provide. The builders who did try intraday documented why it is unreliable.
+
+**For Tempo:** nobody in this sample combines a hard order door with pre-registered, honest strategy testing; that is Tempo's niche. Two ideas worth taking: Valet/Vizier's autonomy ladder (a shadow mode that journals decisions without orders), and ibkr-algo-trader's rule to count a resting limit as filled only if price trades through it by at least a tick.
