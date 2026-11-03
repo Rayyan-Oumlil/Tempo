@@ -1,0 +1,54 @@
+{
+  "_note": "Pre-registered 2026-11-03 (late), BEFORE any tactical allocation signal was computed or any result existed. Do not edit to fit a result. To change a criterion, add a dated entry to docs/research/log.md saying why, then edit.",
+  "idea": "Faber-style tactical asset allocation: hold each of five asset classes only while its month-end price is above the average of its last 10 month-end prices, otherwise hold cash. The most common simple systematic approach among retail traders. Reported results: 1972 to 2005 Sharpe 0.81, CAGR 11.7%, max drawdown 9.5%; 2006 to March 2025 out of sample Sharpe 0.68, CAGR 6.05%, max drawdown 11.7% (Concretum Group, a vendor; not checked against the papers). Expectation stated up front: lower drawdown than buy and hold, not more money. See docs/research/what-people-do.md section 2A.",
+  "universe": {
+    "US stocks": "SPY",
+    "foreign stocks": "EFA",
+    "US bonds": "AGG",
+    "commodities": "DBC",
+    "real estate": "VNQ"
+  },
+  "universe_note": "Fixed now. Faber used IEF for bonds and GSG for commodities; IBKR serves AGG and DBC with the full history (the NASDAQ-listed names lose older history), so AGG and DBC are used, chosen for data length not performance.",
+  "rule": {
+    "signal": "On the last trading day of each month: an asset is 'on' if its close is above the simple average of its last M month-end closes including the current one (M = 10 for the primary).",
+    "weights": "each 'on' asset gets 20% of equity; assets that are 'off' are replaced by cash (no re-weighting of the others)",
+    "fill": "next trading day's close, whole shares, sells before buys",
+    "cash_return": "0 (conservative: the original uses Treasury bills; IBKR pays interest on idle cash, so this understates the strategy)",
+    "costs": "tempo.backtest.Costs commission and the SEC fee on sells, plus slippage in bps per side; base 1 bp, sweep 0, 1, 3, 5, 10",
+    "prices": "IBKR daily bars, ADJUSTED_LAST; today's unfinished bar dropped; sample starts when all five assets have data"
+  },
+  "benchmarks": [
+    "equal weight of the same five assets, always held, rebalanced monthly (isolates what the timing rule adds)",
+    "60% SPY and 40% AGG, rebalanced monthly (the standard comparison)",
+    "SPY buy and hold"
+  ],
+  "capital": 100000,
+  "variants_tried": {
+    "count": 4,
+    "list": [
+      "M=10 (primary)",
+      "M=6",
+      "M=8",
+      "M=12"
+    ],
+    "note": "Only the primary can pass criteria 1 to 7. All four are reported."
+  },
+  "negative_control": "200 versions with the same random permutation of days applied to all five assets (keeps each asset's returns and the correlations between assets, destroys serial structure, which a trend filter needs).",
+  "reported_not_criteria": [
+    "fraction of time in cash",
+    "result by year against the 60/40",
+    "orders and total costs"
+  ],
+  "pass_all_of": [
+    "primary net Sharpe at 1 bp per side at or above BOTH the always-held equal-weight benchmark and the 60/40",
+    "primary max drawdown shallower than BOTH SPY buy and hold and the always-held equal-weight benchmark",
+    "primary net CAGR above the 60/40's net CAGR",
+    "primary net Sharpe above 0 in both halves of the sample",
+    "t-statistic of the primary's mean daily net return at 1 bp above 3.0 (Harvey, Liu, Zhu)",
+    "primary net CAGR above 0 at 5 bps per side",
+    "primary beats at least 95% of the 200 shuffled controls on net Sharpe",
+    "at least 3 of the 4 variants have net Sharpe at or above the always-held equal-weight benchmark"
+  ],
+  "if_fail": "Report it as a failure, with each benchmark's numbers. No extra assets, no re-weighting, no different averages.",
+  "if_pass": "Still not proof of an edge and not real money. It would be a candidate for a forward test through the signal ledger and then the gate in evidence/gate.json."
+}
