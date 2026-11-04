@@ -76,22 +76,59 @@ class Journal:
     def append(self, kind: str, **fields) -> dict:
         record = {"ts": self._clock(), "kind": kind, **fields}
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._repair_tail()
         with self.path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, default=str) + "\n")
             f.flush()
             os.fsync(f.fileno())
         return record
 
+    def _repair_tail(self) -> None:
+        """If a process died mid-write the file ends in half a record with no newline. Appending after it would glue the
+        new record onto the fragment and corrupt both, so first remove the fragment (kept in `<journal>.torn` for
+        forensics). Safe because an intent is written before its order is sent: a torn intent means nothing was sent,
+        and a torn sent/outcome leaves its intent unresolved, which reconcile handles.
+        """
+        if not self.path.exists() or self.path.stat().st_size == 0:
+            return
+        with self.path.open("rb") as f:
+            f.seek(-1, os.SEEK_END)
+            if f.read(1) == b"\n":
+                return  # the normal case, and the only one that costs a single byte read
+            f.seek(0)
+            data = f.read()
+        cut = data.rfind(b"\n") + 1
+        fragment = data[cut:]
+        try:
+            json.loads(fragment.decode("utf-8"))
+            complete = True  # a whole record that only lacks its newline: keep it
+        except ValueError:
+            complete = False
+        with self.path.open("rb+") as f:
+            if complete:
+                f.seek(0, os.SEEK_END)
+                f.write(b"\n")
+            else:
+                with Path(str(self.path) + ".torn").open("ab") as torn:
+                    torn.write(fragment + b"\n")
+                f.truncate(cut)
+
     def records(self) -> list[dict]:
+        """Every record, in order. A final line with no newline that is not valid JSON is a record cut off by a crash:
+        it is skipped (it was never durably written). Any other invalid line is corruption and fails loudly."""
         if not self.path.exists():
             return []
+        text = self.path.read_text(encoding="utf-8")
+        lines = text.split("\n")
         out = []
-        for n, line in enumerate(self.path.read_text(encoding="utf-8").splitlines(), start=1):
+        for n, line in enumerate(lines, start=1):
             if not line.strip():
                 continue
             try:
                 out.append(json.loads(line))
             except ValueError as exc:
+                if n == len(lines):  # no trailing newline: the write was cut off
+                    continue
                 raise ValueError(f"{self.path}: line {n} is not valid JSON ({exc})") from exc
         return out
 
