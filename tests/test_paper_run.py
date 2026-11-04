@@ -1,6 +1,8 @@
 from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
+import pytest
+
 
 from tempo.journal import Journal
 from tempo.ledger import Ledger
@@ -145,3 +147,100 @@ def test_an_exit_is_due_on_the_exit_day_and_not_a_calendar_day_earlier(tmp_path)
     assert due_actions(ledger.signals(), entered, date(2026, 11, 8))["exit"] == []          # the day before the exit day (a Sunday)
     assert len(due_actions(ledger.signals(), entered, date(2026, 11, 9))["exit"]) == 2      # the 5th trading day
     assert len(due_actions(ledger.signals(), entered, date(2026, 11, 10))["exit"]) == 2     # and any later day, until it is done
+
+
+from functools import partial
+
+from tempo.paper_run import dry_sender, preflight
+
+
+def test_a_dry_run_sends_nothing_and_records_nothing(tmp_path):
+    e = env(tmp_path)
+    lines = []
+    sender = partial(dry_sender, say=lines.append)
+    assert run_entries(now=et(2026, 11, 3, 9, 40), sender=sender, **e) == 3
+    assert e["ib"].placed == []                                          # nothing reached the broker
+    assert len(lines) == 3 and all("WOULD SEND" in line for line in lines)
+    assert e["ib"].whatif_calls == [("AAA", "BUY", 5, "DAY"), ("BBB", "SELL", 5, "DAY"), ("CCC", "BUY", 5, "DAY")]
+    assert e["order_journal"].records() == []                            # the real order journal was not touched by the door
+
+
+def test_a_dry_run_applies_the_order_doors_real_checks(tmp_path):
+    from tempo.state import set_mode
+    e = env(tmp_path)
+    set_mode("reduce_only", "test", e["state_path"])
+    lines = []
+    assert run_entries(now=et(2026, 11, 3, 9, 40), sender=partial(dry_sender, say=lines.append), **e) == 0
+    assert e["ib"].placed == [] and not any("WOULD SEND" in line for line in lines)
+    assert all("reduce_only" in v["reason"] for v in load_state(e["paper"]).values())   # the scratch journal shows why
+
+
+def test_a_dry_run_refuses_a_non_paper_account(tmp_path):
+    e = env(tmp_path, ib=FakeIB(account="U1234567"))
+    with pytest.raises(Exception, match="(?i)paper|live|account"):
+        run_entries(now=et(2026, 11, 3, 9, 40), sender=partial(dry_sender, say=lambda *_: None), **e)
+
+
+def test_a_dry_run_of_exits_shows_what_would_close(tmp_path):
+    e = env(tmp_path)
+    run_entries(now=et(2026, 11, 3, 9, 40), **e)        # a real (fake-broker) entry first
+    lines = []
+    n = run_exits(now=et(2026, 11, 9, 15, 50), sender=partial(dry_sender, say=lines.append), **e)
+    assert n == 2 and sum("(exit)" in line for line in lines) == 2
+    assert len(e["ib"].placed) == 3                     # only the three entries; the dry exits sent nothing
+
+
+def make_preflight_env(tmp_path, **ib_over):
+    e = env(tmp_path, ib=FakeIB(**ib_over))
+    return e
+
+
+def run_preflight(e, now, readonly=False, loss_fn=lambda ib: 0.3):
+    return preflight(e["ib"], readonly=readonly, ledger=e["ledger"], paper=e["paper"], order_journal=e["order_journal"],
+                     state_path=e["state_path"], now=now, loss_fn=loss_fn)
+
+
+def names(checks):
+    return {c.name: c for c in checks}
+
+
+def test_preflight_all_ok_on_a_healthy_paper_account(tmp_path):
+    checks = names(run_preflight(make_preflight_env(tmp_path), et(2026, 11, 3, 9, 40)))
+    assert all(c.ok for c in checks.values()), {n: c.detail for n, c in checks.items() if not c.ok}
+    assert "enter 3" in checks["due today"].detail
+    assert "entries allowed now: True" in checks["time window"].detail
+
+
+def test_preflight_fails_when_orders_are_disabled_the_mode_is_not_normal_or_pnl_is_unreadable(tmp_path):
+    from tempo.state import set_mode
+    e = make_preflight_env(tmp_path)
+    assert not names(run_preflight(e, et(2026, 11, 3, 9, 40), readonly=True))["orders enabled"].ok
+
+    def broken(ib):
+        raise RuntimeError("daily P&L not available")
+
+    c = names(run_preflight(e, et(2026, 11, 3, 9, 40), loss_fn=broken))
+    assert not c["daily P&L readable"].ok and "not available" in c["daily P&L readable"].detail
+    set_mode("reduce_only", "test", e["state_path"])
+    assert not names(run_preflight(e, et(2026, 11, 3, 9, 40)))["mode normal"].ok
+
+
+def test_preflight_fails_on_a_non_paper_account(tmp_path):
+    assert not names(run_preflight(make_preflight_env(tmp_path, account="U1234567"), et(2026, 11, 3, 9, 40)))["account"].ok
+
+
+def test_preflight_reports_closed_windows_without_failing(tmp_path):
+    c = names(run_preflight(make_preflight_env(tmp_path), et(2026, 11, 3, 20, 0)))
+    assert c["time window"].ok and "entries allowed now: False" in c["time window"].detail
+
+
+def test_the_dry_run_gives_the_what_if_an_explicit_tif_even_if_the_order_has_none(tmp_path):
+    """Without tif='DAY', IBKR's whatIfOrder returns nothing (docs/ibkr-gotchas.md)."""
+    from ib_async import MarketOrder, Stock
+
+    e = env(tmp_path)
+    order = MarketOrder("BUY", 1)
+    assert order.tif == ""
+    dry_sender(e["ib"], Stock("AAA", "SMART", "USD"), order, reason="t", journal=e["order_journal"], limits=LIMITS, equity_usd=100_000.0,
+               ref_price=100.0, state_path=e["state_path"], now=et(2026, 11, 3, 9, 40), say=lambda *_: None)
+    assert e["ib"].whatif_calls[-1][3] == "DAY" and order.tif == ""    # the probe copy carries it; the real order is untouched

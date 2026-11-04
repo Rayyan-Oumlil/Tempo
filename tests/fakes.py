@@ -138,3 +138,14 @@ class FakeIB:
 
     def cancelPnL(self, account):
         self.pnl_cancelled += 1
+
+    def accountSummary(self):
+        return [NS(tag=t, value=v, currency="USD") for t, v in
+                [("NetLiquidation", str(self.net_liq)), ("TotalCashValue", "500"), ("BuyingPower", "2000"), ("AvailableFunds", "500")]]
+
+    def reqCurrentTime(self):
+        return datetime.now(timezone.utc)
+
+    def whatIfOrder(self, contract, order):
+        self.whatif_calls = getattr(self, "whatif_calls", []) + [(contract.symbol, order.action, order.totalQuantity, order.tif)]
+        return NS(commission=1.0, initMarginChange="500")

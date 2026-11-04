@@ -2,6 +2,11 @@
 
 Usage (needs IB Gateway on the paper account with Read-Only API unticked, and IBKR_READONLY=0):
   python -m tempo.paper_run plan [YYYY-MM-DD]   show what is due on that date (default today); sends nothing
+  python -m tempo.paper_run preflight           connect and check everything that must be true before a live run; sends nothing
+  python -m tempo.paper_run entries --dry-run [--as-of 'YYYY-MM-DD HH:MM']
+                                                the real flow with the real broker and the order door's real checks,
+                                                asking the broker what each order would cost, but sending and
+                                                recording nothing (--as-of sets the ET clock, e.g. to rehearse a day)
   python -m tempo.paper_run entries             09:35 ET or later: enter every signal whose entry day is today
   python -m tempo.paper_run exits               15:45 ET or later: exit every position whose exit day is today or past
   python -m tempo.paper_run status              every signal's state
@@ -11,17 +16,24 @@ sources are never traded. Paper P&L never feeds a strategy verdict; it measures 
 """
 from __future__ import annotations
 
+import copy
+import shutil
 import sys
+import tempfile
 from datetime import date, datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 from ib_async import MarketOrder, Stock
 
+from tempo.account import daily_loss_pct
+from tempo.health import Check, run_health
 from tempo.hours import EASTERN, OPEN, add_trading_days, is_regular_hours, next_trading_day, session_close
-from tempo.journal import Journal
+from tempo.ibkr import assert_paper
+from tempo.journal import JOURNAL_FILE, Journal
 from tempo.ledger import Ledger
-from tempo.orders import OrderRefused, place, record_outcome
-from tempo.state import STATE_FILE
+from tempo.orders import OrderRefused, _check_entry, is_exit, place, record_outcome
+from tempo.state import STATE_FILE, get_mode
 
 HORIZONS = {"claude_earnings_v1": 5, "insider_cluster_v1": 21}
 NOTIONAL_PCT = 0.5
@@ -97,8 +109,43 @@ def _skip(paper: Journal, signal: dict, reason: str, say) -> None:
     say(f"  skip {signal['symbol']}: {reason}")
 
 
+def dry_sender(ib, contract, order, *, reason, journal, limits, equity_usd, ref_price, state_path, now, say=print, **_):
+    """Stands in for `place` in a dry run: runs the order door's own checks and asks the broker what the order would
+    cost (whatIfOrder), but sends nothing. Returns a stub that looks like a filled trade so the rest of the flow runs."""
+    accounts = ib.managedAccounts()
+    assert_paper(accounts[0] if accounts else "none")
+    exit_order = is_exit(ib, contract, order)
+    if not exit_order:
+        _check_entry(ib, order, journal=journal, state_path=state_path, limits=limits, equity_usd=equity_usd,
+                     ref_price=ref_price, now=now)
+    probe = copy.copy(order)
+    probe.tif = "DAY"  # whatIfOrder returns nothing without an explicit tif (docs/ibkr-gotchas.md)
+    state = ib.whatIfOrder(contract, probe)
+    detail = f"commission {state.commission}, margin change {state.initMarginChange}" if state else "whatIf returned nothing"
+    say(f"  WOULD SEND {order.action} {order.totalQuantity} {contract.symbol} ({'exit' if exit_order else 'entry'}): {detail}")
+    status = SimpleNamespace(status="Filled", filled=order.totalQuantity, avgFillPrice=ref_price)
+    return SimpleNamespace(order=order, orderStatus=status, fills=[], log=[], isDone=lambda: True, dry_run=True)
+
+
+def preflight(ib, *, readonly: bool, ledger: Ledger, paper: Journal, order_journal: Journal, state_path: Path, now: datetime,
+              loss_fn=daily_loss_pct) -> list[Check]:
+    """Everything that must be true before the first live order, in one list. Sends nothing."""
+    checks = run_health(ib, journal=order_journal, state_path=state_path)
+    checks.append(Check("orders enabled", not readonly, "IBKR_READONLY=0" if not readonly else "set IBKR_READONLY=0 and untick Read-Only API in Gateway"))
+    mode = get_mode(state_path)
+    checks.append(Check("mode normal", mode == "normal", mode if mode == "normal" else f"{mode}: every entry would be refused"))
+    try:
+        checks.append(Check("daily P&L readable", True, f"{loss_fn(ib):.2f}% down today (entries are refused if this cannot be read)"))
+    except Exception as exc:  # noqa: BLE001 - the point of the check is to surface whatever goes wrong
+        checks.append(Check("daily P&L readable", False, f"{exc}"))
+    due = due_actions(ledger.signals(), load_state(paper), now.astimezone(EASTERN).date())
+    checks.append(Check("due today", True, f"enter {len(due['enter'])}, exit {len(due['exit'])}, missed {len(due['missed'])}"))
+    checks.append(Check("time window", True, f"entries allowed now: {entries_allowed(now)}; exits allowed now: {exits_allowed(now)}"))
+    return checks
+
+
 def run_entries(*, ib, ledger: Ledger, paper: Journal, order_journal: Journal, limits, state_path: Path, price_fn, equity_fn,
-                now: datetime, say=print) -> int:
+                now: datetime, say=print, sender=place) -> int:
     today = now.astimezone(EASTERN).date()
     actions = due_actions(ledger.signals(), load_state(paper), today)
     for s in actions["missed"]:
@@ -123,13 +170,14 @@ def run_entries(*, ib, ledger: Ledger, paper: Journal, order_journal: Journal, l
             continue
         order = MarketOrder("BUY" if s["direction"] == 1 else "SELL", qty, tif="DAY", orderRef=f"paper-{s['source']}")
         try:
-            trade = place(ib, contract, order, reason=s["signal_id"], journal=order_journal, limits=limits, equity_usd=equity,
-                          ref_price=ref, state_path=state_path, now=now)
+            trade = sender(ib, contract, order, reason=s["signal_id"], journal=order_journal, limits=limits, equity_usd=equity,
+                           ref_price=ref, state_path=state_path, now=now)
         except OrderRefused as exc:
             _skip(paper, s, f"order door refused: {exc}", say)
             continue
         _wait(ib, trade)
-        record_outcome(order_journal, trade)
+        if not getattr(trade, "dry_run", False):  # a dry run sent nothing, so there is no outcome to record
+            record_outcome(order_journal, trade)
         if trade.orderStatus.status != "Filled":
             ib.cancelOrder(trade.order)
             _skip(paper, s, f"not filled: {trade.orderStatus.status}", say)
@@ -144,7 +192,7 @@ def run_entries(*, ib, ledger: Ledger, paper: Journal, order_journal: Journal, l
 
 
 def run_exits(*, ib, ledger: Ledger, paper: Journal, order_journal: Journal, limits, state_path: Path, price_fn, equity_fn,
-              now: datetime, say=print) -> int:
+              now: datetime, say=print, sender=place) -> int:
     today = now.astimezone(EASTERN).date()
     done = 0
     for s, entry in due_actions(ledger.signals(), load_state(paper), today)["exit"]:
@@ -152,13 +200,14 @@ def run_exits(*, ib, ledger: Ledger, paper: Journal, order_journal: Journal, lim
         ib.qualifyContracts(contract)
         order = MarketOrder("SELL" if entry["direction"] == 1 else "BUY", entry["qty"], tif="DAY", orderRef=f"paper-exit-{s['source']}")
         try:
-            trade = place(ib, contract, order, reason=f"exit {s['signal_id']}", journal=order_journal, limits=limits,
-                          equity_usd=equity_fn(ib), ref_price=price_fn(ib, contract), state_path=state_path, now=now)
+            trade = sender(ib, contract, order, reason=f"exit {s['signal_id']}", journal=order_journal, limits=limits,
+                           equity_usd=equity_fn(ib), ref_price=price_fn(ib, contract), state_path=state_path, now=now)
         except OrderRefused as exc:
             say(f"  exit of {s['symbol']} refused ({exc}); will retry next run")
             continue
         _wait(ib, trade)
-        record_outcome(order_journal, trade)
+        if not getattr(trade, "dry_run", False):  # a dry run sent nothing, so there is no outcome to record
+            record_outcome(order_journal, trade)
         if trade.orderStatus.status != "Filled":
             say(f"  exit of {s['symbol']} not filled ({trade.orderStatus.status}); will retry next run")
             ib.cancelOrder(trade.order)
@@ -183,8 +232,30 @@ def main(argv: list[str]) -> int:
     from tempo.ibkr import connect
     from tempo.ibutil import default_journal, default_limits
 
+    as_of = None
+    if "--as-of" in argv:
+        i = argv.index("--as-of")
+        as_of = datetime.strptime(argv[i + 1], "%Y-%m-%d %H:%M").replace(tzinfo=EASTERN).astimezone(timezone.utc)
+        argv = argv[:i] + argv[i + 2:]
+    dry = "--dry-run" in argv
+    argv = [a for a in argv if a != "--dry-run"]
+    if as_of is not None and not dry:
+        raise ValueError("--as-of only works together with --dry-run (a real run always uses the real clock)")
     command = argv[0] if argv else "status"
     ledger, paper = Ledger(), Journal(PAPER_FILE)
+    if command == "preflight":
+        load_dotenv()
+        cfg = load_config()
+        ib = connect(cfg)
+        ib.RequestTimeout = 30
+        try:
+            checks = preflight(ib, readonly=cfg.readonly, ledger=ledger, paper=paper, order_journal=default_journal(),
+                               state_path=STATE_FILE, now=datetime.now(timezone.utc))
+        finally:
+            ib.disconnect()
+        for c in checks:
+            print(f"[{'OK' if c.ok else 'FAIL'}] {c.name:<18} {c.detail}")
+        return 0 if all(c.ok for c in checks) else 1
     if command == "plan":
         day = date.fromisoformat(argv[1]) if len(argv) > 1 else datetime.now(EASTERN).date()
         a = due_actions(ledger.signals(), load_state(paper), day)
@@ -196,25 +267,41 @@ def main(argv: list[str]) -> int:
         print(f"{len(load_state(paper))} signals tracked")
         return 0
     if command not in ("entries", "exits"):
-        raise ValueError("usage: python -m tempo.paper_run plan|entries|exits|status")
+        raise ValueError("usage: python -m tempo.paper_run plan|preflight|entries|exits|status [--dry-run [--as-of 'YYYY-MM-DD HH:MM']]")
     load_dotenv()
     cfg = load_config()
-    if cfg.readonly:
-        raise RuntimeError("paper_run needs IBKR_READONLY=0 (and Read-Only API unticked in Gateway)")
-    now = datetime.now(timezone.utc)
-    allowed = entries_allowed(now) if command == "entries" else exits_allowed(now)
-    if not allowed:
-        raise RuntimeError(f"{command} not allowed now ({now.astimezone(EASTERN):%Y-%m-%d %H:%M} ET): entries need 09:35 ET or later, exits 15 minutes before the close")
+    now = as_of or datetime.now(timezone.utc)
+    if not dry:
+        if cfg.readonly:
+            raise RuntimeError("paper_run needs IBKR_READONLY=0 (and Read-Only API unticked in Gateway)")
+        allowed = entries_allowed(now) if command == "entries" else exits_allowed(now)
+        if not allowed:
+            raise RuntimeError(f"{command} not allowed now ({now.astimezone(EASTERN):%Y-%m-%d %H:%M} ET): entries need 09:35 ET or later, exits 15 minutes before the close")
+    order_journal, sender = default_journal(), place
+    if dry:  # scratch copies of both journals: a dry run asks the broker and the order door, and writes nothing real
+        paper, order_journal, folder = _scratch_copies()
+        sender = dry_sender
+        print(f"DRY RUN at {now.astimezone(EASTERN):%Y-%m-%d %H:%M} ET (clock as given; the broker is real): nothing will be sent or recorded")
     ib = connect(cfg)
     ib.RequestTimeout = 30
     try:
         fn = run_entries if command == "entries" else run_exits
-        n = fn(ib=ib, ledger=ledger, paper=paper, order_journal=default_journal(), limits=default_limits(), state_path=STATE_FILE,
-               price_fn=last_close, equity_fn=equity_usd, now=now)
+        n = fn(ib=ib, ledger=ledger, paper=paper, order_journal=order_journal, limits=default_limits(), state_path=STATE_FILE,
+               price_fn=last_close, equity_fn=equity_usd, now=now, sender=sender)
     finally:
         ib.disconnect()
-    print(f"{command}: {n} order(s) completed")
+        if dry:
+            shutil.rmtree(folder, ignore_errors=True)
+    print(f"{command}: {n} order(s) {'that WOULD be sent' if dry else 'completed'}")
     return 0
+
+
+def _scratch_copies() -> tuple[Journal, Journal, Path]:
+    folder = Path(tempfile.mkdtemp(prefix="tempo-dryrun-"))
+    for name, source in (("paper_run.jsonl", PAPER_FILE), ("journal.jsonl", JOURNAL_FILE)):
+        if source.exists():
+            shutil.copy(source, folder / name)
+    return Journal(folder / "paper_run.jsonl"), Journal(folder / "journal.jsonl"), folder
 
 
 if __name__ == "__main__":
