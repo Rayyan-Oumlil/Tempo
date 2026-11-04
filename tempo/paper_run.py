@@ -30,6 +30,7 @@ from tempo.account import daily_loss_pct
 from tempo.health import Check, run_health
 from tempo.hours import EASTERN, OPEN, add_trading_days, is_regular_hours, next_trading_day, session_close
 from tempo.ibkr import assert_paper
+from tempo.ibutil import wait_until
 from tempo.journal import JOURNAL_FILE, Journal
 from tempo.ledger import Ledger
 from tempo.orders import OrderRefused, _check_entry, is_exit, place, record_outcome
@@ -40,6 +41,7 @@ NOTIONAL_PCT = 0.5
 ENTRY_DELAY_MINUTES = 5
 EXIT_LEAD_MINUTES = 15
 FILL_WAIT_SECONDS = 20.0
+CANCEL_WAIT_SECONDS = 10.0
 PAPER_FILE = Path(__file__).resolve().parents[1] / "journal" / "paper_run.jsonl"
 
 
@@ -78,6 +80,8 @@ def load_state(paper: Journal) -> dict[str, dict]:
         sid = r.get("signal_id")
         if r["kind"] == "paper_entry":
             state[sid] = {**r, "status": "entered"}
+        elif r["kind"] == "paper_reduce":      # part of an exit filled: the rest is still held and still tracked
+            state[sid] = {**state.get(sid, {}), "qty": r["qty"]}
         elif r["kind"] == "paper_exit":
             state[sid] = {**state.get(sid, {}), **r, "status": "exited"}
         elif r["kind"] in ("paper_skip", "paper_missed"):
@@ -175,18 +179,18 @@ def run_entries(*, ib, ledger: Ledger, paper: Journal, order_journal: Journal, l
         except OrderRefused as exc:
             _skip(paper, s, f"order door refused: {exc}", say)
             continue
-        _wait(ib, trade)
-        if not getattr(trade, "dry_run", False):  # a dry run sent nothing, so there is no outcome to record
-            record_outcome(order_journal, trade)
-        if trade.orderStatus.status != "Filled":
-            ib.cancelOrder(trade.order)
+        _settle(ib, trade, order_journal)
+        filled = int(trade.orderStatus.filled)
+        if filled < 1:
             _skip(paper, s, f"not filled: {trade.orderStatus.status}", say)
             continue
+        partial = filled < qty
         entry_day, exit_day = schedule(s["date_et"], HORIZONS[s["source"]])
-        paper.append("paper_entry", signal_id=s["signal_id"], symbol=s["symbol"], direction=s["direction"], qty=qty, ref_price=ref,
-                     fill_price=trade.orderStatus.avgFillPrice, entry_day=entry_day.isoformat(), exit_day=exit_day.isoformat(),
-                     order_ref=trade.order.orderRef)
-        say(f"  entered {s['symbol']} {order.action} {qty} @ {trade.orderStatus.avgFillPrice}")
+        # What filled is what is held, so that is what is tracked and later exited, even if the order only partly filled.
+        paper.append("paper_entry", signal_id=s["signal_id"], symbol=s["symbol"], direction=s["direction"], qty=filled, partial=partial,
+                     ref_price=ref, fill_price=trade.orderStatus.avgFillPrice, entry_day=entry_day.isoformat(),
+                     exit_day=exit_day.isoformat(), order_ref=trade.order.orderRef)
+        say(f"  entered {s['symbol']} {order.action} {filled}{f' (PARTIAL, {qty} asked)' if partial else ''} @ {trade.orderStatus.avgFillPrice}")
         placed += 1
     return placed
 
@@ -198,30 +202,57 @@ def run_exits(*, ib, ledger: Ledger, paper: Journal, order_journal: Journal, lim
     for s, entry in due_actions(ledger.signals(), load_state(paper), today)["exit"]:
         contract = Stock(s["symbol"], "SMART", "USD")
         ib.qualifyContracts(contract)
-        order = MarketOrder("SELL" if entry["direction"] == 1 else "BUY", entry["qty"], tif="DAY", orderRef=f"paper-exit-{s['source']}")
+        sign = 1 if entry["direction"] == 1 else -1
+        # Never close more than the broker actually holds: selling more than a long position (or buying back more than a
+        # short) would not be an exit, it would open the opposite position.
+        qty = min(entry["qty"], int(sign * _held(ib, s["symbol"])))
+        if qty < 1:
+            paper.append("paper_exit", signal_id=s["signal_id"], symbol=s["symbol"], exit_fill_price=None, exit_order_ref=None,
+                         note="no position at the broker; nothing to close")
+            say(f"  {s['symbol']}: no position at the broker, nothing to close (tracking closed)")
+            continue
+        order = MarketOrder("SELL" if sign == 1 else "BUY", qty, tif="DAY", orderRef=f"paper-exit-{s['source']}")
         try:
             trade = sender(ib, contract, order, reason=f"exit {s['signal_id']}", journal=order_journal, limits=limits,
                            equity_usd=equity_fn(ib), ref_price=price_fn(ib, contract), state_path=state_path, now=now)
         except OrderRefused as exc:
             say(f"  exit of {s['symbol']} refused ({exc}); will retry next run")
             continue
-        _wait(ib, trade)
-        if not getattr(trade, "dry_run", False):  # a dry run sent nothing, so there is no outcome to record
-            record_outcome(order_journal, trade)
-        if trade.orderStatus.status != "Filled":
-            say(f"  exit of {s['symbol']} not filled ({trade.orderStatus.status}); will retry next run")
-            ib.cancelOrder(trade.order)
+        _settle(ib, trade, order_journal)
+        filled = int(trade.orderStatus.filled)
+        if filled < qty:
+            if filled > 0:
+                paper.append("paper_reduce", signal_id=s["signal_id"], symbol=s["symbol"], qty=entry["qty"] - filled, filled=filled,
+                             fill_price=trade.orderStatus.avgFillPrice)
+                say(f"  partial exit of {s['symbol']}: {filled} of {qty} filled; {entry['qty'] - filled} still tracked, retried next run")
+            else:
+                say(f"  exit of {s['symbol']} not filled ({trade.orderStatus.status}); will retry next run")
             continue
-        paper.append("paper_exit", signal_id=s["signal_id"], symbol=s["symbol"], exit_fill_price=trade.orderStatus.avgFillPrice,
+        paper.append("paper_exit", signal_id=s["signal_id"], symbol=s["symbol"], qty=filled, exit_fill_price=trade.orderStatus.avgFillPrice,
                      exit_order_ref=trade.order.orderRef)
-        say(f"  exited {s['symbol']} {order.action} {entry['qty']} @ {trade.orderStatus.avgFillPrice}")
+        say(f"  exited {s['symbol']} {order.action} {filled} @ {trade.orderStatus.avgFillPrice}")
         done += 1
     return done
 
 
+def _held(ib, symbol: str) -> float:
+    return sum(p.position for p in ib.positions() if p.contract.symbol == symbol)
+
+
 def _wait(ib, trade) -> None:
-    from tempo.ibutil import wait_until
     wait_until(ib, trade.isDone, FILL_WAIT_SECONDS)
+
+
+def _settle(ib, trade, order_journal: Journal) -> None:
+    """Wait for the fill, cancel whatever is still working, wait for the cancel, then journal the FINAL state of the
+    order (so a partly filled order is recorded as it ended, and its journal intent is closed)."""
+    _wait(ib, trade)
+    if getattr(trade, "dry_run", False):  # a dry run sent nothing: nothing to cancel, no outcome to record
+        return
+    if trade.orderStatus.status != "Filled":
+        ib.cancelOrder(trade.order)
+        wait_until(ib, trade.isDone, CANCEL_WAIT_SECONDS)
+    record_outcome(order_journal, trade)
 
 
 def main(argv: list[str]) -> int:

@@ -10,7 +10,7 @@ M = [
     ("exit never due", "known[\"status\"] == \"entered\" and exit_day <= today:", "known[\"status\"] == \"entered\" and exit_day < today:"),
     ("all sources traded", "horizon = HORIZONS.get(s[\"source\"])\n        if horizon is None:\n            continue", "horizon = HORIZONS.get(s[\"source\"], 5)"),
     ("shorts bought", 'MarketOrder("BUY" if s["direction"] == 1 else "SELL", qty,', 'MarketOrder("BUY", qty,'),
-    ("exit side not flipped", 'MarketOrder("SELL" if entry["direction"] == 1 else "BUY", entry["qty"],', 'MarketOrder("BUY" if entry["direction"] == 1 else "SELL", entry["qty"],'),
+    ("exit side not flipped", 'MarketOrder("SELL" if sign == 1 else "BUY", qty,', 'MarketOrder("BUY" if sign == 1 else "SELL", qty,'),
     ("refusal crashes instead of skipping", "        except OrderRefused as exc:\n            _skip(paper, s, f\"order door refused: {exc}\", say)\n            continue", "        except KeyError as exc:\n            continue"),
     ("size too large", "NOTIONAL_PCT = 0.5", "NOTIONAL_PCT = 5.0"),
     ("entry delay removed", "_minutes_into_session(now) >= ENTRY_DELAY_MINUTES", "True"),
@@ -21,10 +21,17 @@ M = [
     ("duplicate entries allowed", "if known is None:", "if known is None or True:"),
     ("preflight mode check inverted", 'Check("mode normal", mode == "normal"', 'Check("mode normal", mode != "normal"'),
     ("preflight orders-enabled inverted", 'Check("orders enabled", not readonly', 'Check("orders enabled", readonly'),
-    ("dry run records outcomes", 'if not getattr(trade, "dry_run", False):', "if True:"),
+    ("dry run records outcomes", 'if getattr(trade, "dry_run", False):', "if False:"),
     ("dry run skips the door checks", "    if not exit_order:\n        _check_entry(", "    if False:\n        _check_entry("),
     ("dry run skips whatIf", "state = ib.whatIfOrder(contract, probe)", "state = None"),
     ("dry run forgets the tif", 'probe.tif = "DAY"', "pass"),
+    ("partly filled entry tracked at the asked size", "qty=filled, partial=partial,", "qty=qty, partial=partial,"),
+    ("exit not capped by the broker position", 'qty = min(entry["qty"], int(sign * _held(ib, s["symbol"])))', 'qty = entry["qty"]'),
+    ("cap ignores the position direction", 'int(sign * _held(ib, s["symbol"]))', 'int(abs(_held(ib, s["symbol"])))'),
+    ("exit with nothing held still sends", '        if qty < 1:\n            paper.append("paper_exit"', '        if False:\n            paper.append("paper_exit"'),
+    ("partial exit not tracked", 'paper.append("paper_reduce", ', 'dict(kind="paper_reduce", '),
+    ("unfilled order left working", "        ib.cancelOrder(trade.order)\n        wait_until(ib, trade.isDone, CANCEL_WAIT_SECONDS)", "        pass"),
+    ("partial entry counted as no fill", "        if filled < 1:\n            _skip(paper, s, f\"not filled", "        if filled < qty:\n            _skip(paper, s, f\"not filled"),
 ]
 
 
