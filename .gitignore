@@ -7,3 +7,4 @@ state.json
 data/
 .coverage
 ledger/*.lock
+goldens/data/

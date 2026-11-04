@@ -1,0 +1,28 @@
+SPY: 5025 daily bars, 2006-11-08 to 2026-11-02 (19.9 years); Costs() defaults plus slippage; capital 100,000
+  gross mean daily return: overnight +0.0309%  intraday (open to close) +0.0171%
+  slippage bps/side           0        1        3        5       10
+  net CAGR                 5.2%    -0.0%   -10.6%   -23.4%   -27.3%
+  at 1 bp: Sharpe 0.06 (buy and hold 0.63), maxDD -44.8% (buy and hold -55.4%), 1st half -3.8%, 2nd half 3.9%, post-2010 1.4%, t = 0.25, orders 10048, costs 115,783
+  break-even slippage: 0.99 bps per side (net CAGR reaches 0)
+  buy and hold CAGR 10.8%
+
+QQQ: 5026 daily bars, 2006-11-08 to 2026-11-02 (19.9 years); Costs() defaults plus slippage; capital 100,000
+  gross mean daily return: overnight +0.0442%  intraday (open to close) +0.0237%
+  slippage bps/side           0        1        3        5       10
+  net CAGR                 7.0%     1.8%    -8.5%   -22.8%   -29.1%
+  at 1 bp: Sharpe 0.20 (buy and hold 0.77), maxDD -35.7% (buy and hold -53.4%), 1st half -2.0%, 2nd half 5.7%, post-2010 3.6%, t = 0.90, orders 10050, costs 157,452
+  break-even slippage: 1.35 bps per side (net CAGR reaches 0)
+  buy and hold CAGR 15.8%
+
+SPY by year at 1 bp (net): 2006 -0.6%  2007 +8.5%  2008 -27.2%  2009 -0.5%  2010 -1.5%  2011 -2.8%  2012 -2.2%  2013 +5.8%  2014 +3.0%  2015 -4.3%  2016 -8.8%  2017 +5.8%  2018 +7.0%  2019 +7.7%  2020 +6.9%  2021 +10.5%  2022 -18.5%  2023 -0.6%  2024 +16.4%  2025 +1.8%  2026 +3.5%
+SPY with 10,000 instead of 100,000 at 1 bp: CAGR -13.7%, costs 13,968 (the 1.00 minimum commission matters at this size)
+
+[FAIL] SPY net Sharpe at 1 bp per side at or above SPY buy and hold
+[FAIL] SPY net CAGR above 0 at 3 bps per side
+[FAIL] SPY net CAGR above 0 at 1 bp in both halves of the sample
+[PASS] SPY net CAGR above 0 at 1 bp in the post-2010 part alone
+[FAIL] t-statistic of SPY's mean daily net return above 3.0
+[PASS] SPY max drawdown shallower than SPY buy and hold
+[FAIL] QQQ also passes: positive CAGR at 3 bps, in both halves, and Sharpe at or above buy and hold
+
+VERDICT: FAIL (report as a failure; the break-even slippage above is still the useful number)

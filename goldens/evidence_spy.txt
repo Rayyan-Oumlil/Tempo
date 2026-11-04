@@ -1,0 +1,13 @@
+SPY: 5025 daily bars, 2006-11-08 to 2026-11-02 (19.9 years)
+costs: 0.005 USD/share (min 1.0), sell fee 20.6/M, slippage 1.0 bps; signal at close t, fill at close t+1
+
+strategy              total    CAGR  Sharpe    maxDD  orders     costs
+flat                   0.0%    0.0%    0.00     0.0%       0      0.00
+buy and hold         675.5%   10.8%    0.63   -55.4%       1     15.14
+SMA 200 trend        345.9%    7.8%    0.71   -23.6%     105   2581.64
+
+negative control (200 shuffled-order versions of the same returns), SMA 200:
+  real Sharpe 0.71; shuffled mean 0.48, best 0.85; real beats 96% of shuffles
+  (a high number says the rule likes the real ordering, not that it has an edge; the gate asks for 95+)
+
+variants tried: 1

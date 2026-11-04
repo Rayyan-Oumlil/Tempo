@@ -1,0 +1,28 @@
+5 assets (AGG, DBC, EFA, SPY, VNQ); window 2007-11-30 to 2026-11-02 (18.9 years), identical for every row; Costs() defaults plus 1 bp slippage; variants tried: 4
+
+strategy                          CAGR  Sharpe    maxDD  orders    costs
+M=10 (primary)                    3.8%    0.51   -17.2%     817     1702
+M=6                               4.1%    0.56   -12.5%     834     2362
+M=8                               4.5%    0.60   -15.2%     841     1971
+M=12                              4.1%    0.55   -13.5%     803     1710
+equal weight 5, always held       5.9%    0.46   -47.4%    1134     1253
+60/40 SPY/AGG                     8.0%    0.71   -35.1%     459      566
+SPY buy and hold                 11.0%    0.63   -54.1%       1       15
+
+primary net CAGR at 0 / 1 / 3 / 5 / 10 bps per side: 3.9% / 3.8% / 3.8% / 3.8% / 3.7%
+negative control (200 same-permutation shuffles): real Sharpe 0.51; shuffled mean 0.38, best 0.75; real beats 84%
+average share of equity in cash at month ends: 32%
+by year (primary / 60/40 / SPY): 2007 +0%/-1%/-1%  2008 -11%/-21%/-37%  2009 +15%/+18%/+26%  2010 +4%/+12%/+15%  2011 -1%/+5%/+2%  2012 +0%/+11%/+16%  2013 +8%/+17%/+32%  2014 +7%/+11%/+13%  2015 -4%/+1%/+1%  2016 +3%/+8%/+12%  2017 +9%/+14%/+22%  2018 -3%/-2%/-5%  2019 +7%/+22%/+31%  2020 +4%/+15%/+18%  2021 +22%/+16%/+29%  2022 -7%/-16%/-18%  2023 +1%/+18%/+26%  2024 +5%/+15%/+25%  2025 +9%/+14%/+18%  2026 +10%/+7%/+11%
+
+t-statistic 2.20; Sharpe by half 0.29 / 0.81
+
+[FAIL] primary net Sharpe at 1 bp at or above BOTH the always-held equal-weight benchmark and the 60/40
+[PASS] primary max drawdown shallower than BOTH SPY buy and hold and the always-held equal-weight benchmark
+[FAIL] primary net CAGR above the 60/40's net CAGR
+[PASS] primary net Sharpe above 0 in both halves
+[FAIL] t-statistic of the primary's mean daily net return above 3.0
+[PASS] primary net CAGR above 0 at 5 bps per side
+[FAIL] primary beats at least 95% of the shuffled controls on net Sharpe
+[PASS] at least 3 of the 4 variants have net Sharpe at or above the always-held equal-weight benchmark
+
+VERDICT: FAIL (report as a failure; no extra assets, no re-weighting, no different averages)

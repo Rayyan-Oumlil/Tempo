@@ -1,0 +1,8 @@
+forward test from 2026-11-03; data through 2026-11-02; 3 bps slippage per side; flat at the start
+  SPY ibs     0 round trips, avg net n/a, win rate n/a, window 0 days
+  QQQ ibs     0 round trips, avg net n/a, win rate n/a, window 0 days
+  SPY rsi2    0 round trips, avg net n/a, win rate n/a, window 0 days
+  QQQ rsi2    0 round trips, avg net n/a, win rate n/a, window 0 days
+pooled: 0 round trips, average net +0.00%
+
+NOT ENOUGH TRIPS: 0 of 60 (deadline 2028-11-03). No verdict, and nothing should be concluded from these numbers.

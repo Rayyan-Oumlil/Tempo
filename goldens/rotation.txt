@@ -1,0 +1,20 @@
+universe 10 ETFs, 2006-11-08 to 2026-11-02 (19.8 years); costs: Costs() defaults; variants tried: 5
+
+strategy                    CAGR  Sharpe    maxDD  1st half  2nd half  orders     costs
+12-1 top3 (primary)         8.4%    0.62   -31.8%      0.45      0.77     759      3953
+6-1 top3                    7.1%    0.50   -39.6%      0.41      0.60     833      5485
+9-1 top3                    7.3%    0.54   -37.0%      0.27      0.81     771      3621
+12-1 top2                   8.2%    0.57   -42.3%      0.29      0.83     527      3824
+12-1 top4                   8.7%    0.67   -27.0%      0.54      0.79     953      3548
+equal weight all (bench)    7.5%    0.58   -41.9%      0.38      0.85    2223      2374
+SPY buy and hold (bench)   10.9%    0.63   -54.9%      0.43      0.87       1        15
+
+negative control (200 same-permutation shuffles): real Sharpe 0.62; shuffled mean 0.48, best 0.87; real beats 84%
+
+[FAIL] Sharpe above SPY buy-and-hold AND above equal-weight-all
+[PASS] max drawdown shallower than SPY buy-and-hold
+[PASS] Sharpe above 0 in both halves
+[FAIL] beats at least 95% of the shuffled controls
+[FAIL] at least 4 of 5 variants beat equal-weight-all
+
+VERDICT: FAIL (report as a failure; no retuning)

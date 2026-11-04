@@ -1,0 +1,36 @@
+pairs kept 9: XOM/CVX, HD/LOW, JPM/BAC, V/MA, WMT/TGT, UPS/FDX, GLD/SLV, EWA/EWC, MS/GS
+pair dropped KO/PEP: PEP has 2228 days, under the 3780 needed
+4685 common days, 2008-03-19 to 2026-11-02 (18.6 years); capital 100,000 split equally; borrow 0.3% a year (stress 1.5%); costs: Costs() defaults
+
+variant                 Sharpe    maxDD  1st half  2nd half  orders    costs   borrow
+W=60 E=2.0 (primary)      0.26    -6.4%      0.44      0.04    3592     6897     1200
+W=40 E=2.0                0.06    -9.5%      0.40     -0.32    4554     8598     1279
+W=90 E=2.0                0.13    -4.9%      0.28     -0.05    2628     4954      998
+W=60 E=1.5                0.14    -9.0%      0.31     -0.06    5138     9958     1581
+W=60 E=2.5               -0.02    -6.2%      0.08     -0.14    2148     3871      722
+
+primary, per pair (net P&L on its own capital, orders):
+  XOM/CVX          874   356 orders
+  HD/LOW        2,428   388 orders
+  JPM/BAC       -1,842   428 orders
+  V/MA        10,733   452 orders
+  WMT/TGT       -2,219   398 orders
+  UPS/FDX       -1,560   382 orders
+  GLD/SLV       -3,303   370 orders
+  EWA/EWC        1,828   396 orders
+  MS/GS         4,179   422 orders
+
+negative control (200 same-permutation shuffles): real Sharpe 0.26; shuffled mean -0.15, best 0.61; real beats 98%
+Sharpe at 1.5% borrow: 0.16
+correlation of daily returns with SPY: 0.18; pairs with positive P&L: 56%
+
+[FAIL] primary net Sharpe >= 0.5 at 0.3% borrow
+[FAIL] primary net Sharpe > 0.3 at 1.5% borrow
+[PASS] beats at least 95% of the shuffled controls
+[PASS] Sharpe above 0 in both halves
+[PASS] at least 4 of 5 variants have Sharpe above 0
+[PASS] absolute correlation with SPY below 0.3
+[FAIL] at least 60% of pairs have positive net P&L
+[PASS] max drawdown shallower than 20%
+
+VERDICT: FAIL (report as a failure; no retuning, no dropping pairs)
