@@ -15,6 +15,17 @@ Starting point (2026-11-03 night): 562 offline tests, 77% line coverage, 3 forwa
 | 5 | **A reusable mutation-check tool.** The scratch scripts used to attack each module are not in the repo. Move them into `tools/` as one generic script. | The most effective test-quality check we found, and currently not repeatable. | `python tools/mutate.py` works for a module and test file |
 | 6 | **Docs consistency.** One current-state page; stale statements removed from the roadmap; every pre-registered test linked to its result. | Documents that disagree with the code mislead the next session. | A cold read of README and roadmap matches `git log` |
 
+## Status (updated as work finishes)
+
+| # | State | Evidence |
+|---|---|---|
+| 1 Trust the verdict code | **Done** | `tools/golden.py` (7 runners, outputs match every number reported), end-to-end tests that feed each runner pure noise (none passes), shared helpers with byte-identical outputs after the refactor |
+| 2 Hygiene and automatic checking | **Done** | GitHub Actions on every push (ruff, 609 offline tests, mutation check), `.gitattributes`, `ruff.toml`, `requirements-dev.txt`, README commands, `docs/runbook.md` |
+| 3 First live run made safe | **Done offline, awaiting Friday** | `paper_run preflight`, `entries --dry-run [--as-of]`, tested with 23 tests and mutations; nothing has met the real broker yet |
+| 4 Order path and data plumbing | **Mostly done** | coverage 77% to 89%; the remainder is `main()` wiring covered by the live suite; refusal tests for every order tool; audit found no silent fallback (7 broad handlers, all re-raise, journal the error, or return an explicit failed check) |
+| 5 Reusable mutation tool | **Done** | `tools/mutate.py` plus six per-module mutation files, run in CI; its first run caught a stale mutation |
+| 6 Docs consistency | **Done** | runbook, roadmap and docs index updated |
+
 ## After that (only when 1 to 6 are done): new features and ideas
 Held on purpose. Candidates, none started: automate the Claude earnings reading through the API (needs a spending cap from the owner), a cloud routine for the insider collection, a cleaner insider rule as a new source, the `whatIfOrder` check and tick rounding, sector-ETF momentum as a further forward test.
 
