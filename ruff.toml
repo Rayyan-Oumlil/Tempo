@@ -1,0 +1,9 @@
+# Real-problem checks only (syntax errors, unused or undefined names, likely bugs). No style churn.
+target-version = "py311"
+extend-exclude = ["goldens", "data", "journal", ".venv"]
+
+[lint]
+select = ["E9", "F", "B", "BLE", "S110"]
+# B904: every command ends in `except ... as err: print(err); raise SystemExit(1)`, which is the intended way to exit.
+# B905: zip() without strict= is used on purpose on equal-length series throughout.
+ignore = ["B904", "B905"]

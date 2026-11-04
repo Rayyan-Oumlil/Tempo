@@ -76,7 +76,7 @@ def test_a_crashed_process_is_reconciled_from_a_fresh_connection(ib, spy, env, r
     """Three orders are sent but never recorded (a crash); a different client id then reconciles them."""
     rules = dict(journal=env["journal"], limits=env["limits"], equity_usd=env["equity"], state_path=env["state_path"])
     far = round(env["price"] * 0.5, 2)
-    working = place(ib, spy, LimitOrder("BUY", 1, far, orderRef="crash-working"), reason="live test", ref_price=env["price"], **rules)
+    place(ib, spy, LimitOrder("BUY", 1, far, orderRef="crash-working"), reason="live test", ref_price=env["price"], **rules)
     filled = place(ib, spy, MarketOrder("BUY", 1, orderRef="crash-filled"), reason="live test", ref_price=env["price"], **rules)
     cancelled = place(ib, spy, LimitOrder("BUY", 1, far - 1, orderRef="crash-cancelled"), reason="live test", ref_price=env["price"], **rules)
     ib.sleep(3)

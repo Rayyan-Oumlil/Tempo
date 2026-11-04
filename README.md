@@ -30,7 +30,22 @@ Day / swing / active trading on an **Interactive Brokers paper account**. Python
 
 On Windows PowerShell set the variable first: `$env:IBKR_READONLY=0`.
 
-**Tests:** `pytest` runs the fast offline suite. `TEMPO_LIVE=1 pytest tests/live` (PowerShell: `$env:TEMPO_LIVE=1; pytest tests/live`) runs five checks against the paper account during regular hours: lifecycle, bracket plus kill, take-profit exit, kill on a long and a short, and crash recovery. It places real paper orders and leaves the account flat. Tests that need the regular session skip themselves outside it.
+### Research and forward-test commands (no orders unless noted)
+
+| Command | What it does |
+|---|---|
+| `python -m tempo.rotation_report`, `pairs_report`, `overnight_report`, `meanrev_report`, `tactical_report` | Run one pre-registered strategy test (rules in `evidence/*.json`) on saved data and print the verdict. Results so far: all FAIL, see `docs/research/log.md` |
+| `python -m tempo.data SYMBOL [YEARS] [--ohlc]` | Download daily bars (closes, or open/high/low/close) to `data/` |
+| `python -m tempo.edgar TICKER [DATE] [brief]` | Print a company's earnings press release (SEC 8-K item 2.02). Needs `SEC_USER_AGENT` in `.env` (a contact string; the SEC requires one) |
+| `python -m tempo.insider DATE [DATE ...]` | Collect SEC Form 4 insider purchases for those days, in order, and record clusters as ledger signals |
+| `python -m tempo.ledger` | Show the signal ledger: counts and statistics per source and horizon (no verdict before 30 scored signals) |
+| `python -m tempo.ledger add SOURCE SYMBOL long\|short EVENT_ID --confidence 1-5 ...` | Record one forward call |
+| `python -m tempo.ledger_score` | Score the ledger's signals against what happened (needs the Gateway for prices) |
+| `python -m tempo.forward` | Forward test of the frozen mean-reversion rules (prints NOT ENOUGH TRIPS until 60 round trips exist) |
+| `IBKR_READONLY=0 python -m tempo.paper_run plan\|entries\|exits\|status` | Trade the ledger's signals on the paper account through the order door (see `evidence/paper_run.json`) |
+| `python tools/golden.py snapshot\|record\|check` | Prove a refactor of the report runners changes none of their numbers |
+
+**Tests:** `pytest` runs the fast offline suite (GitHub Actions runs it, plus `ruff check .`, on every push; dev tools: `pip install -r requirements-dev.txt`). `TEMPO_LIVE=1 pytest tests/live` (PowerShell: `$env:TEMPO_LIVE=1; pytest tests/live`) runs five checks against the paper account during regular hours: lifecycle, bracket plus kill, take-profit exit, kill on a long and a short, and crash recovery. It places real paper orders and leaves the account flat. Tests that need the regular session skip themselves outside it.
 
 ## How orders are kept safe
 Every order goes through `tempo/orders.py` (`place`); nothing else calls `ib.placeOrder`. It refuses non-paper accounts and duplicates, sets `tif`, tags the order with a unique `orderRef`, and writes the intent to `journal/journal.jsonl` **before** sending. New entries also need: mode `normal`, regular hours, a known equity and price, size under the position cap, the account not down more than `max_daily_loss_pct` today, and no stale unresolved journal entries. Orders that reduce a live position are never refused by those limits.

@@ -14,7 +14,6 @@ from __future__ import annotations
 import csv
 import difflib
 import importlib
-import shutil
 import sys
 from datetime import date
 from pathlib import Path

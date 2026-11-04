@@ -12,7 +12,7 @@ sources are never traded. Paper P&L never feeds a strategy verdict; it measures 
 from __future__ import annotations
 
 import sys
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from ib_async import MarketOrder, Stock

@@ -1,7 +1,6 @@
 from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
-import pytest
 
 from tempo.journal import Journal
 from tempo.ledger import Ledger
