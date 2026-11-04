@@ -20,3 +20,5 @@ jobs:
         run: ruff check .
       - name: Offline tests (the live suite needs IB Gateway and is skipped)
         run: pytest -q
+      - name: Mutation check (deliberate bugs must be caught by the tests)
+        run: python tools/mutate.py
