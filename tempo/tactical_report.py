@@ -18,6 +18,7 @@ from pathlib import Path
 
 from tempo.backtest import Costs, backtest, buy_and_hold, cagr, max_drawdown, sharpe
 from tempo.data import csv_path, load_closes
+from tempo.reporting import by_year, daily_returns
 from tempo.overnight import t_statistic
 from tempo.pairs_report import drop_incomplete_today
 from tempo.portfolio import PResult, align, month_end_indices, run_weighted, same_permutation_shuffle
@@ -65,19 +66,6 @@ def verdict(m: Metrics) -> list[tuple[str, bool]]:
         ("at least 3 of the 4 variants have net Sharpe at or above the always-held equal-weight benchmark",
          sum(1 for s in m.variant_sharpes if s >= m.ew_sharpe) >= 3),
     ]
-
-
-def daily_returns(values: list[float]) -> list[float]:
-    return [b / a - 1 for a, b in zip(values, values[1:])]
-
-
-def by_year(dates: list[str], equity: list[float]) -> list[tuple[str, float]]:
-    out, start = [], 0
-    for i in range(1, len(dates) + 1):
-        if i == len(dates) or dates[i][:4] != dates[start][:4]:
-            out.append((dates[start][:4], equity[i - 1] / equity[max(start - 1, 0)] - 1))
-            start = i
-    return out
 
 
 def load_universe(symbols: list[str]):

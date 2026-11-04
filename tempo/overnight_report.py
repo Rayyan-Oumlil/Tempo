@@ -12,6 +12,7 @@ from dataclasses import dataclass, replace
 
 from tempo.backtest import Costs, backtest, buy_and_hold, cagr, max_drawdown, sharpe
 from tempo.data import Bars, drop_incomplete_today_bars, load_ohlc, ohlc_path
+from tempo.reporting import by_year, daily_returns
 from tempo.overnight import break_even_slippage, run_overnight, t_statistic
 
 SLIPPAGE_SWEEP = (0, 1, 3, 5, 10)
@@ -49,10 +50,6 @@ def verdict(spy: Metrics, qqq: Metrics) -> list[tuple[str, bool]]:
     ]
 
 
-def daily_returns(values: list[float]) -> list[float]:
-    return [b / a - 1 for a, b in zip(values, values[1:])]
-
-
 def measure(bars: Bars, capital: float = 100_000.0) -> tuple[Metrics, dict]:
     base = Costs()
     run = {s: run_overnight(bars.open, bars.close, replace(base, slippage_bps=float(s)), capital) for s in SLIPPAGE_SWEEP}
@@ -69,15 +66,6 @@ def measure(bars: Bars, capital: float = 100_000.0) -> tuple[Metrics, dict]:
     extra = {"run": run, "bh": bh, "mean_night": sum(night) / len(night), "mean_day": sum(day) / len(day),
              "orders": len(run[BASE_BPS].trades), "costs": run[BASE_BPS].costs}
     return m, extra
-
-
-def by_year(dates: list[str], equity: list[float]) -> list[tuple[str, float]]:
-    out, start = [], 0
-    for i in range(1, len(dates) + 1):
-        if i == len(dates) or dates[i][:4] != dates[start][:4]:
-            out.append((dates[start][:4], equity[i - 1] / equity[max(start - 1, 0)] - 1))
-            start = i
-    return out
 
 
 def report() -> tuple[str, bool]:

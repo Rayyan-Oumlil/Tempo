@@ -17,6 +17,7 @@ from pathlib import Path
 from tempo.backtest import Costs, max_drawdown, sharpe
 from tempo.data import csv_path, load_closes
 from tempo.pairs import PairParams, pair_signals, run_pair
+from tempo.reporting import daily_returns
 from tempo.portfolio import align, same_permutation_shuffle
 
 SPEC = Path(__file__).resolve().parents[1] / "evidence" / "pairs_trading.json"
@@ -80,10 +81,6 @@ def run_portfolio(closes, pairs, params: PairParams, costs: Costs, borrow: float
     results = [run_pair(closes[a], closes[b], pair_signals(closes[a], closes[b], params), costs, CAPITAL / len(pairs), borrow)
                for a, b in pairs]
     return [sum(vals) for vals in zip(*(r.equity for r in results))], results
-
-
-def daily_returns(values: list[float]) -> list[float]:
-    return [b / a - 1 for a, b in zip(values, values[1:])]
 
 
 def correlation(x: list[float], y: list[float]) -> float:

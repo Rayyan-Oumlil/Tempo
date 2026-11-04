@@ -14,6 +14,7 @@ from dataclasses import dataclass, replace
 from tempo.backtest import Costs, Trade, backtest, buy_and_hold, cagr, max_drawdown, sharpe
 from tempo.data import Bars, drop_incomplete_today_bars, load_ohlc, ohlc_path
 from tempo.meanrev import days_invested, ibs_signals, rsi2_signals, run_longflat, shuffle_bars
+from tempo.reporting import by_year, daily_returns
 from tempo.overnight import MAX_SLIPPAGE_BPS, t_statistic
 
 SLIPPAGE_SWEEP = (0, 1, 3, 5, 10)
@@ -72,10 +73,6 @@ def signals_for(bars: Bars, rule: str) -> list[int]:
     return rsi2_signals(bars.close) if rule == "rsi2" else ibs_signals(bars.high, bars.low, bars.close)
 
 
-def daily_returns(values: list[float]) -> list[float]:
-    return [b / a - 1 for a, b in zip(values, values[1:])]
-
-
 def break_even_slippage(bars: Bars, rule: str, costs: Costs, capital: float) -> float:
     sig = signals_for(bars, rule)
 
@@ -120,15 +117,6 @@ def measure(bars: Bars, rule: str, capital: float = 100_000.0, with_shuffles: bo
     same = run_longflat(bars.open, bars.close, sig, replace(base, slippage_bps=float(BASE_BPS)), capital, fill="same_close")
     return m, {"run": run, "bh": bh, "same_close_cagr": cagr(same.equity), "same_close_sharpe": sharpe(same.equity),
                "fakes": extra_fakes, "costs": run[BASE_BPS].costs}
-
-
-def by_year(dates: list[str], equity: list[float]) -> list[tuple[str, float]]:
-    out, start = [], 0
-    for i in range(1, len(dates) + 1):
-        if i == len(dates) or dates[i][:4] != dates[start][:4]:
-            out.append((dates[start][:4], equity[i - 1] / equity[max(start - 1, 0)] - 1))
-            start = i
-    return out
 
 
 def report() -> tuple[str, bool]:
