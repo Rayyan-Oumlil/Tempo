@@ -20,9 +20,11 @@ import copy
 import shutil
 import sys
 import tempfile
+from collections.abc import Callable
 from datetime import date, datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 from ib_async import MarketOrder, Stock
 
@@ -73,11 +75,16 @@ def exits_allowed(now: datetime) -> bool:
     return is_regular_hours(now) and minute >= close_min - EXIT_LEAD_MINUTES
 
 
+SIGNAL_KINDS = frozenset({"paper_entry", "paper_reduce", "paper_exit", "paper_skip", "paper_missed"})
+
+
 def load_state(paper: Journal) -> dict[str, dict]:
     """Where each traded signal stands, replayed from the paper journal: entered, exited, skipped or missed."""
     state: dict[str, dict] = {}
     for r in paper.records():
-        sid = r.get("signal_id")
+        if r["kind"] not in SIGNAL_KINDS:
+            continue
+        sid = r["signal_id"]  # a signal record without its id is corruption: fail loudly, never file it under None
         if r["kind"] == "paper_entry":
             state[sid] = {**r, "status": "entered"}
         elif r["kind"] == "paper_reduce":      # part of an exit filled: the rest is still held and still tracked
@@ -308,6 +315,7 @@ def main(argv: list[str]) -> int:
         allowed = entries_allowed(now) if command == "entries" else exits_allowed(now)
         if not allowed:
             raise RuntimeError(f"{command} not allowed now ({now.astimezone(EASTERN):%Y-%m-%d %H:%M} ET): entries need 09:35 ET or later, exits 15 minutes before the close")
+    sender: Callable[..., Any]
     order_journal, sender = default_journal(), place
     if dry:  # scratch copies of both journals: a dry run asks the broker and the order door, and writes nothing real
         paper, order_journal, folder = _scratch_copies()

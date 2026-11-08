@@ -344,3 +344,12 @@ def test_an_exit_does_nothing_if_the_broker_is_on_the_opposite_side_of_what_was_
     assert run_exits(now=et(2026, 11, 9, 15, 50), **e) == 0
     assert len(ib.placed) == 3 and ib.held["AAA"] == -3 and ib.held["BBB"] == 4        # no order was sent
     assert load_state(e["paper"])["claude_earnings_v1:AAA:e1"]["status"] == "exited"    # tracking closed, with a note
+
+
+def test_a_signal_record_without_its_id_fails_loudly_and_other_kinds_are_ignored(tmp_path):
+    paper = Journal(tmp_path / "paper.jsonl")
+    paper.append("note", text="not a signal record, ignored")
+    assert load_state(paper) == {}
+    paper.append("paper_entry", symbol="AAA", qty=1)   # corruption: an entry with no signal_id
+    with pytest.raises(KeyError, match="signal_id"):
+        load_state(paper)

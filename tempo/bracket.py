@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
-from ib_async import LimitOrder, MarketOrder, Stock, StopOrder
+from ib_async import LimitOrder, MarketOrder, Order, Stock, StopOrder, Trade
 
 from tempo.account import equity_usd as account_equity_usd, last_close
 from tempo.config import load_config
@@ -42,9 +42,9 @@ class BracketPlan:
 
 @dataclass(frozen=True)
 class BracketLegs:
-    parent: object
-    stop: object
-    take_profit: object | None
+    parent: Trade
+    stop: Trade
+    take_profit: Trade | None
 
 
 def plan_bracket(equity_usd: float, entry: float, stop: float, take_profit: float | None, rules: RiskRules,
@@ -73,7 +73,7 @@ def place_bracket(ib, contract, plan: BracketPlan, *, journal: Journal, limits: 
 
         oca = f"tempo-oca-{uuid.uuid4().hex[:10]}"
         parent.orderId = ib.client.getReqId()
-        children = []
+        children: list[Order] = []
         if plan.take_profit is not None:
             children.append(LimitOrder("SELL", plan.qty, plan.take_profit, tif="GTC", orderRef="tempo-bracket-tp",
                                        parentId=parent.orderId, ocaGroup=oca, ocaType=1, transmit=False))

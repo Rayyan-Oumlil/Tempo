@@ -18,6 +18,8 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - name: Lint (real problems only, see ruff.toml)
         run: ruff check .
+      - name: Types on the money path (see mypy.ini)
+        run: mypy
       - name: Offline tests (the live suite needs IB Gateway and is skipped)
         run: pytest -q
       - name: Mutation check (deliberate bugs must be caught by the tests)

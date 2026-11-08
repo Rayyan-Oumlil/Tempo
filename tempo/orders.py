@@ -61,7 +61,8 @@ def is_exit(ib, contract, order) -> bool:
 def _committed(open_trades, contract, action: str) -> float:
     """Size already claimed by resting orders on this side. An OCA group (ocaType 1: one fill cancels the rest)
     can only ever fill one leg, so it claims its largest leg, not the sum; everything else adds up."""
-    loose, groups = 0.0, {}
+    loose = 0.0
+    groups: dict[str, float] = {}
     for t in open_trades:
         if not (_same(t.contract, contract) and t.order.action == action):
             continue
