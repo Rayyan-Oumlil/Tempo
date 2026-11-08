@@ -11,7 +11,8 @@ M = [
     ("torn fragment not kept", 'torn.write(fragment + b"\\n")', 'torn.write(b"")'),
     ("fragment not removed", "                f.truncate(cut)", "                pass"),
     ("healthy files rewritten", 'if f.read(1) == b"\\n":', "if False:"),
-    ("lock not taken by the test helper", "        with journal.lock():\n            journal.append(\"tick\"", "        if True:\n            journal.append(\"tick\""),
+    ("lock not taken by the test helper", "        with journal.lock():\n            value = int(", "        if True:\n            value = int("),
+    ("lock never acquired", "                    _try_lock(handle)\n", "                    pass\n"),
 ]
 TEST_FILES = ["tests/test_journal_crash.py", "tests/test_journal_state.py", "tests/journal_worker.py", "tests/fakes.py"]
 

@@ -144,3 +144,13 @@ def test_a_torn_fragment_is_kept_for_forensics_each_time(tmp_path):
         j.append("after")
     kept = (tmp_path / "j.jsonl.torn").read_text(encoding="utf-8").splitlines()
     assert kept == ['{"ts": 1.0, "kind": "i', '{"ts": 2.0, "ki'] and len(j.records()) == 4
+
+
+def test_the_lock_really_excludes_other_processes_no_update_is_lost(tmp_path):
+    path, counter = tmp_path / "j.jsonl", tmp_path / "counter"
+    counter.write_text("0", encoding="utf-8")
+    workers = [start("count", path, counter, 25) for _ in range(3)]
+    for w in workers:
+        _, err = w.communicate(timeout=120)
+        assert w.returncode == 0, err
+    assert int(counter.read_text(encoding="utf-8")) == 75   # a read-modify-write under the lock never overlaps
