@@ -4,6 +4,7 @@ __pycache__/
 .pytest_cache/
 journal/
 state.json
+data/
 .coverage
 ledger/*.lock
-goldens/
+goldens/data/
