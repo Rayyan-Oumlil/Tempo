@@ -96,7 +96,7 @@ A paper account only simulates fees. Check the real fee schedule before going li
 
 ## Windows
 
-- A Claude Code session that has a folder as its working directory locks it; a rename fails with "Device or resource busy".
+- An editor or terminal session that has a folder as its working directory locks it; a rename fails with "Device or resource busy".
 - Windows PowerShell 5.1 `ren tempo Tempo` rejects a case-only rename; rename via a temporary name.
 - Python run from WSL can't reach a Gateway on the Windows host via localhost (video 01).
 

@@ -176,7 +176,7 @@ Method and limits: read the READMEs and research files of the cloned repos (agen
 Reordered from the earlier plan: the pairs test goes before shadow mode, because shadow mode has no strategy to feed yet and would be infrastructure ahead of need. Literature (search summaries, papers not read): Gatev et al. (1962-1997) found positive returns; Do and Faff extended to 2009 and found a downward trend, and with commissions, market impact and short fees pairs profits stay positive but much more modest; a review says after realistic costs the distance approach largely disappears in recent years outside turbulent periods. IBKR borrow: annualized, charged every calendar day, can change intraday and general-collateral names can turn hard to borrow; one academic study puts general-collateral fees around 17 bps on average (older sample), so 0.3% is a conservative assumption, 1.5% the stress case. Everything is fixed in `evidence/pairs_trading.json`: ten pairs chosen by industry rationale, one primary rule plus four fragility variants, eight pass criteria. Stated expectation: FAIL is the likely result. Result will be appended below, pass or fail.
 
 ### 2026-11-03: result, pairs trading on daily closes: FAIL (3 of 8 criteria failed)
-Run once, `python -m tempo.pairs_report` (code committed first, 6abbd2c). Nine pairs (XOM/CVX, HD/LOW, JPM/BAC, V/MA, WMT/TGT, UPS/FDX, GLD/SLV, EWA/EWC, MS/GS); **KO/PEP dropped by the registered rule** (IBKR serves PEP only from 2017-12, the same NASDAQ-transfer limitation as TLT and IEF). 4,685 common days, 2008-03-19 to 2026-11-02 (18.6 years), 100,000 split equally, costs at `Costs()` defaults, borrow 0.3% a year, today's unfinished bar dropped.
+Run once, `python -m tempo.pairs_report` (code committed first, 005d60e). Nine pairs (XOM/CVX, HD/LOW, JPM/BAC, V/MA, WMT/TGT, UPS/FDX, GLD/SLV, EWA/EWC, MS/GS); **KO/PEP dropped by the registered rule** (IBKR serves PEP only from 2017-12, the same NASDAQ-transfer limitation as TLT and IEF). 4,685 common days, 2008-03-19 to 2026-11-02 (18.6 years), 100,000 split equally, costs at `Costs()` defaults, borrow 0.3% a year, today's unfinished bar dropped.
 
 | Variant | Sharpe | maxDD | 1st half | 2nd half | orders | costs USD | borrow USD |
 |---|---|---|---|---|---|---|---|
@@ -204,7 +204,7 @@ Full write-up with every claim tagged by source quality: `docs/research/swing-tr
 First of the ranked swing-test queue. Fixed in `evidence/overnight_drift.json`: SPY primary, QQQ confirmation, buy at the close and sell at the next open, costs plus slippage swept from 0 to 10 bps per side, seven pass criteria including the break-even slippage as a reported number. A shuffle control is deliberately not used (a mean drift is unchanged by shuffling). Expectation stated up front: gross effect positive, net uncertain; a pass needs survival at 3 bps per side and a t-statistic above 3.0.
 
 ### 2026-11-03: result, overnight drift on SPY and QQQ: FAIL (5 of 7 criteria failed)
-Run once, `python -m tempo.overnight_report` (code committed first, 1e12ce8). Buy the close, sell the next open, every day; 19.9 years (2006-11-08 to 2026-11-02), ADJUSTED_LAST bars (adjusted opens and closes checked consistent on eight SPY ex-dividend dates: the adjusted overnight return differs from the raw one by the dividend, 0.25 to 0.34%, and normal days match), today's unfinished bar dropped, `Costs()` defaults plus slippage swept, capital 100,000.
+Run once, `python -m tempo.overnight_report` (code committed first, 94d5eda). Buy the close, sell the next open, every day; 19.9 years (2006-11-08 to 2026-11-02), ADJUSTED_LAST bars (adjusted opens and closes checked consistent on eight SPY ex-dividend dates: the adjusted overnight return differs from the raw one by the dividend, 0.25 to 0.34%, and normal days match), today's unfinished bar dropped, `Costs()` defaults plus slippage swept, capital 100,000.
 
 | | SPY | QQQ |
 |---|---|---|
@@ -232,7 +232,7 @@ Criteria: FAIL Sharpe at or above buy and hold (0.06 vs 0.63); FAIL CAGR > 0 at 
 Second of the ranked swing queue, fixed in `evidence/mean_reversion_etf.json`: RSI(2) with a 200-day trend filter (Connors) and internal bar strength, long or flat, four variants (two rules, two ETFs), eight pass criteria. The key design choice: the literature's signals use the close and assume a fill at the same close, which cannot be done honestly; the primary test fills at the NEXT OPEN, and the optimistic same-close result is reported only as a reference. A shuffled-bar control (whole bars permuted) is used because mean reversion needs serial structure. Expectation stated up front: small positive Sharpe, below buy and hold.
 
 ### 2026-11-03: result, low-exposure mean reversion on SPY and QQQ: FAIL (2 of 8 criteria failed, the closest call so far)
-Run once, `python -m tempo.meanrev_report` (code committed first, 7fe7a62). Next-open fills, 19.9 years, ADJUSTED_LAST, today's unfinished bar dropped, `Costs()` plus slippage, capital 100,000, 4 variants tried.
+Run once, `python -m tempo.meanrev_report` (code committed first, 8b5f07a). Next-open fills, 19.9 years, ADJUSTED_LAST, today's unfinished bar dropped, `Costs()` plus slippage, capital 100,000, 4 variants tried.
 
 | Variant | Net CAGR at 0 / 1 / 3 / 5 / 10 bps | Sharpe at 1 bp | maxDD | Invested | Round trips | Avg net per trip | Break-even slippage |
 |---|---|---|---|---|---|---|---|
@@ -267,7 +267,7 @@ Step 1 of the plan in `what-people-do.md`. Fixed in `evidence/tactical_allocatio
 The pre-registration did not say how to compare strategies that sit in cash while their averages warm up (the first 6 to 12 months) against benchmarks that invest at once. Decision, recorded before any result existed: every strategy and benchmark is measured over the same window, starting at the 12th month end (the longest warm-up among the four variants). No criterion or parameter in `evidence/tactical_allocation.json` changes.
 
 ### 2026-11-03 (late): result, tactical asset allocation (Faber-style, five ETFs): FAIL (4 of 8 criteria failed)
-Run once, `python -m tempo.tactical_report` (code committed first, 8541f2d). SPY, EFA, AGG, DBC, VNQ; window 2007-11-30 to 2026-11-02 (18.9 years), identical for every row; `Costs()` plus 1 bp; 4 variants tried; cash earns 0.
+Run once, `python -m tempo.tactical_report` (code committed first, 4719c8c). SPY, EFA, AGG, DBC, VNQ; window 2007-11-30 to 2026-11-02 (18.9 years), identical for every row; `Costs()` plus 1 bp; 4 variants tried; cash earns 0.
 
 | Strategy | CAGR | Sharpe | maxDD | Orders | Costs USD |
 |---|---|---|---|---|---|
@@ -317,7 +317,7 @@ Scoring: `python -m tempo.ledger_score` (needs Gateway) writes scores as days pa
 Protocol in `evidence/insider_forward.json`. Feasibility probe (read-only): the SEC's daily index for 2026-11-02 exists (940 Form 4 index lines, about 470 filings once the owner and issuer lines of the same filing are merged); the index for the current day is not generated until overnight. Rule: at least 2 distinct insiders making open-market purchases (code P, not flagged as a pre-planned 10b5-1 trade) at a volume-weighted price of at least 5 USD for at least 200,000 USD in the trailing 7 days, one long signal per issuer per 30 days, a harsher 50 bps round-trip cost assumption stored with each signal, horizons 1, 5 and 21 days against SPY. Full test: 100 scored signals at 21 days, mean net excess above 1.0%, t above 2.0, hit rate above 52%, positive in both halves, and fewer than 10% unscoreable.
 
 ### 2026-11-03 (night): first insider collection, 15 signals recorded (source `insider_cluster_v1`)
-Code committed first (085d5f7, URL fix 4aea6c4: the first attempt used a wrong index URL, failed cleanly, wrote nothing). Run: 5 trading days of filings (2026-10-27, 28, 29, 30 and 11-02, the 7-day window ending 11-02): 1,600 Form 4 filings read, 247 counted purchases (65, 34, 61, 31 and 56 per day), 0 failed downloads, 15 clusters, all recorded as signals at the clock time of the run (entry: open of 2026-11-04).
+Code committed first (d2ddd69, URL fix e43b0c7: the first attempt used a wrong index URL, failed cleanly, wrote nothing). Run: 5 trading days of filings (2026-10-27, 28, 29, 30 and 11-02, the 7-day window ending 11-02): 1,600 Form 4 filings read, 247 counted purchases (65, 34, 61, 31 and 56 per day), 0 failed downloads, 15 clusters, all recorded as signals at the clock time of the run (entry: open of 2026-11-04).
 
 | Symbol | Insiders | Value USD | VWAP | Symbol | Insiders | Value USD | VWAP |
 |---|---|---|---|---|---|---|---|
