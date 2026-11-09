@@ -195,7 +195,7 @@ def make_preflight_env(tmp_path, **ib_over):
     return e
 
 
-def run_preflight(e, now, readonly=False, loss_fn=lambda ib: 0.3):
+def run_preflight(e, now, readonly=False, loss_fn=lambda ib, timeout=5.0: 0.3):
     return preflight(e["ib"], readonly=readonly, ledger=e["ledger"], paper=e["paper"], order_journal=e["order_journal"],
                      state_path=e["state_path"], now=now, loss_fn=loss_fn)
 
@@ -216,7 +216,7 @@ def test_preflight_fails_when_orders_are_disabled_the_mode_is_not_normal_or_pnl_
     e = make_preflight_env(tmp_path)
     assert not names(run_preflight(e, et(2026, 11, 3, 9, 40), readonly=True))["orders enabled"].ok
 
-    def broken(ib):
+    def broken(ib, timeout=5.0):
         raise RuntimeError("daily P&L not available")
 
     c = names(run_preflight(e, et(2026, 11, 3, 9, 40), loss_fn=broken))
@@ -353,3 +353,38 @@ def test_a_signal_record_without_its_id_fails_loudly_and_other_kinds_are_ignored
     paper.append("paper_entry", symbol="AAA", qty=1)   # corruption: an entry with no signal_id
     with pytest.raises(KeyError, match="signal_id"):
         load_state(paper)
+
+
+def test_entries_abort_before_recording_anything_when_the_pnl_never_arrives(tmp_path):
+    """Seen live 2026-11-09: IBKR's first P&L answer took 25s or more (or never came within 45s). Recording each
+    refused signal as skipped is irreversible, so an unreadable P&L must stop the whole run, not skip signals."""
+    import math
+
+    e = env(tmp_path)
+    e["ib"].daily_pnl = math.nan
+    with pytest.raises(RuntimeError, match="daily P&L"):
+        run_entries(now=et(2026, 11, 3, 9, 40), **e)
+    assert [r for r in e["paper"].records() if r["kind"] in ("paper_skip", "paper_entry")] == []
+    assert e["ib"].placed == []
+
+
+def test_entries_ask_for_the_pnl_once_with_the_long_warmup_wait(tmp_path):
+    from tempo.account import PNL_WARMUP_SECONDS
+
+    e = env(tmp_path)
+    asked = []
+
+    def loss_fn(ib, timeout=5.0):
+        asked.append(timeout)
+        return 0.0
+
+    run_entries(now=et(2026, 11, 3, 9, 40), loss_fn=loss_fn, **e)
+    assert asked == [PNL_WARMUP_SECONDS]
+
+
+def test_preflight_waits_as_long_as_the_entries_gate_does(tmp_path):
+    from tempo.account import PNL_WARMUP_SECONDS
+
+    asked = []
+    run_preflight(make_preflight_env(tmp_path), et(2026, 11, 3, 9, 40), loss_fn=lambda ib, timeout=5.0: asked.append(timeout) or 0.3)
+    assert asked == [PNL_WARMUP_SECONDS]

@@ -28,7 +28,7 @@ from typing import Any
 
 from ib_async import MarketOrder, Stock
 
-from tempo.account import daily_loss_pct
+from tempo.account import PNL_WARMUP_SECONDS, daily_loss_pct
 from tempo.health import Check, run_health
 from tempo.hours import EASTERN, OPEN, add_trading_days, is_regular_hours, next_trading_day, session_close
 from tempo.ibkr import assert_paper
@@ -146,7 +146,7 @@ def preflight(ib, *, readonly: bool, ledger: Ledger, paper: Journal, order_journ
     mode = get_mode(state_path)
     checks.append(Check("mode normal", mode == "normal", mode if mode == "normal" else f"{mode}: every entry would be refused"))
     try:
-        checks.append(Check("daily P&L readable", True, f"{loss_fn(ib):.2f}% down today (entries are refused if this cannot be read)"))
+        checks.append(Check("daily P&L readable", True, f"{loss_fn(ib, timeout=PNL_WARMUP_SECONDS):.2f}% down today (entries are refused if this cannot be read)"))
     except Exception as exc:  # noqa: BLE001 - the point of the check is to surface whatever goes wrong
         checks.append(Check("daily P&L readable", False, f"{exc}"))
     due = due_actions(ledger.signals(), load_state(paper), now.astimezone(EASTERN).date())
@@ -156,7 +156,7 @@ def preflight(ib, *, readonly: bool, ledger: Ledger, paper: Journal, order_journ
 
 
 def run_entries(*, ib, ledger: Ledger, paper: Journal, order_journal: Journal, limits, state_path: Path, price_fn, equity_fn,
-                now: datetime, say=print, sender=place) -> int:
+                now: datetime, say=print, sender=place, loss_fn=daily_loss_pct) -> int:
     today = now.astimezone(EASTERN).date()
     actions = due_actions(ledger.signals(), load_state(paper), today)
     for s in actions["missed"]:
@@ -164,6 +164,10 @@ def run_entries(*, ib, ledger: Ledger, paper: Journal, order_journal: Journal, l
         say(f"  missed {s['symbol']}")
     if not actions["enter"]:
         return 0
+    # The order door refuses every entry while the daily P&L is unknown, and each refusal is recorded as a skip that
+    # can never be undone. So wait for the P&L once, up front, and stop the whole run (nothing recorded) if it never comes.
+    say("  waiting for IBKR's daily P&L (the first answer can take up to a minute)...")
+    loss_fn(ib, timeout=PNL_WARMUP_SECONDS)
     equity, placed = equity_fn(ib), 0
     for s in actions["enter"]:
         contract = Stock(s["symbol"], "SMART", "USD")

@@ -24,11 +24,48 @@ def test_loss_pct_is_measured_against_the_start_of_day_equity():
     assert daily_loss_pct(ib_with(2_000.0, net_liq=102_000.0)) == pytest.approx(-2.0)   # a gain is a negative loss
 
 
-def test_it_waits_for_the_first_update_and_always_cancels_the_subscription():
+def test_it_waits_for_the_first_update_and_keeps_one_subscription_open():
     ib = ib_with(-1_000.0, net_liq=99_000.0)
     ib.pnl_after_polls = 3
     assert daily_loss_pct(ib) == pytest.approx(1.0)
-    assert ib.pnl_cancelled == 1
+    assert (ib.pnl_requested, ib.pnl_cancelled) == (1, 0)
+
+
+def test_repeated_calls_reuse_one_live_subscription():
+    """Seen live 2026-11-09: subscribing and cancelling per order got no P&L back within 10s in 14 of 15 tries
+    (18 of 22 entries refused), while one long-lived subscription answered at once every time."""
+    ib = ib_with(-1_000.0, net_liq=99_000.0)
+    assert daily_loss_pct(ib) == pytest.approx(1.0)
+    ib.daily_pnl, ib.net_liq = -5_000.0, 95_000.0          # the live subscription now reports a bigger loss
+    assert daily_loss_pct(ib) == pytest.approx(5.0)         # must follow the live value, not a cached number
+    assert ib.pnl_requested == 1
+
+
+def test_later_calls_do_not_wait_the_settle_time_again():
+    ib = ib_with(-1_000.0, net_liq=99_000.0)
+    daily_loss_pct(ib)
+    sleeps = []
+    ib.sleep = lambda seconds: sleeps.append(seconds)
+    daily_loss_pct(ib)
+    assert sum(sleeps) == 0
+
+
+def test_a_subscription_that_never_answers_is_cancelled_so_the_next_call_starts_clean():
+    ib = ib_with(math.nan)
+    with pytest.raises(RuntimeError, match="daily P&L"):
+        daily_loss_pct(ib, timeout=1.0)
+    ib.daily_pnl = -1_000.0
+    ib.net_liq = 99_000.0
+    assert daily_loss_pct(ib) == pytest.approx(1.0)
+    assert (ib.pnl_requested, ib.pnl_cancelled) == (2, 1)
+
+
+def test_a_value_that_turns_unknown_later_is_refused_not_trusted():
+    ib = ib_with(-1_000.0, net_liq=99_000.0)
+    daily_loss_pct(ib)
+    ib.daily_pnl = math.nan
+    with pytest.raises(RuntimeError, match="daily P&L"):
+        daily_loss_pct(ib, timeout=1.0)
 
 
 def test_a_stale_first_update_is_not_trusted():
