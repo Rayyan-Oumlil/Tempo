@@ -1,6 +1,8 @@
 """Account values that need IBKR-specific handling."""
 from __future__ import annotations
 
+import weakref
+
 from ib_async import Forex
 
 
@@ -50,33 +52,64 @@ PNL_UNSET = 1e300  # ib_async uses about 1.8e308 for "not set"
 # Seen live 2026-11-02: right after reqPnL the first callback can carry a STALE figure (-11 while the real daily P&L
 # was -151), and the real one follows about a second later. So the value is only read after it has settled.
 PNL_SETTLE_SECONDS = 2.0
+# Seen live 2026-11-09: the FIRST P&L answer on a fresh connection took 25.6s once and did not come within 45s three
+# other times; once it has come, reads are instant. So whoever needs the P&L to decide something irreversible
+# (the entries gate, preflight) waits this long once; the per-order check then finds it already known.
+PNL_WARMUP_SECONDS = 60.0
 
 
 def _known(value: float) -> bool:
     return value == value and abs(value) < PNL_UNSET  # not NaN, not the "unset" sentinel
 
 
+_PNL_SUBSCRIPTIONS: "weakref.WeakKeyDictionary" = weakref.WeakKeyDictionary()  # one live P&L subscription per connection
+
+
+def _live_pnl(ib, account: str, timeout: float):
+    """The connection's live P&L object, subscribing (and waiting for it to settle) only the first time.
+
+    Seen live 2026-11-09: subscribing and cancelling for every order got no answer within 10s in 14 of 15 tries
+    (18 of 22 entries refused), while one long-lived subscription answered at once every time.
+    """
+    held = _PNL_SUBSCRIPTIONS.get(ib)
+    if held is not None and held[0] == account:
+        return held[1]
+    pnl = ib.reqPnL(account)
+    _PNL_SUBSCRIPTIONS[ib] = (account, pnl)
+    _wait(ib, timeout, lambda waited: waited < PNL_SETTLE_SECONDS or not _known(pnl.dailyPnL))
+    return pnl
+
+
+def _wait(ib, timeout: float, keep_waiting) -> float:
+    waited = 0.0
+    while waited < timeout and keep_waiting(waited):
+        ib.sleep(0.25)
+        waited += 0.25
+    return waited
+
+
+def _drop_pnl(ib, account: str) -> None:
+    _PNL_SUBSCRIPTIONS.pop(ib, None)
+    ib.cancelPnL(account)
+
+
 def daily_loss_pct(ib, timeout: float = 5.0) -> float:
     """How far the account is down today, as a % of start-of-day equity (negative = up). Raises if unknown.
 
     Uses IBKR's own daily P&L (realized + unrealized, base currency) rather than our own bookkeeping, and
-    start-of-day equity = NetLiquidation - daily P&L. The P&L subscription is always cancelled again.
-    Always waits PNL_SETTLE_SECONDS first (never trusts the first callback); `timeout` bounds the total wait.
+    start-of-day equity = NetLiquidation - daily P&L. The subscription stays open for the life of the connection
+    and is read live; the first read waits PNL_SETTLE_SECONDS (never trusts the first callback). If the value is
+    not known, the subscription is cancelled so the next call starts a fresh one, and this raises.
     """
     net = next((v for v in ib.accountValues() if v.tag == "NetLiquidation" and v.currency != "BASE"), None)
     if net is None:
         raise RuntimeError("Account values lack NetLiquidation: cannot compute the daily loss")
     account = ib.managedAccounts()[0]
-    pnl = ib.reqPnL(account)
-    try:
-        waited = 0.0
-        while waited < timeout and (waited < PNL_SETTLE_SECONDS or not _known(pnl.dailyPnL)):
-            ib.sleep(0.25)
-            waited += 0.25
-        daily = pnl.dailyPnL
-    finally:
-        ib.cancelPnL(account)
+    pnl = _live_pnl(ib, account, timeout)
+    _wait(ib, timeout, lambda _: not _known(pnl.dailyPnL))  # a held subscription gets the full timeout to recover
+    daily = pnl.dailyPnL
     if not _known(daily):
+        _drop_pnl(ib, account)
         raise RuntimeError(f"daily P&L not available from IBKR within {timeout:g}s")
     start = float(net.value) - daily
     if start <= 0:

@@ -53,6 +53,7 @@ class FakeIB:
         self.pnl_after_polls = 0     # how many sleeps before the real P&L arrives
         self.stale_pnl = float("nan")  # what it reports before that (IBKR can send a stale number first)
         self.pnl_cancelled = 0
+        self.pnl_requested = 0
         self.price = price
         self.held = dict(positions or {})  # symbol -> signed quantity
         self.trades = []
@@ -120,6 +121,7 @@ class FakeIB:
 
     def reqPnL(self, account):
         fake = self
+        self.pnl_requested += 1
         polls = {"n": 0}
 
         class Pnl:
