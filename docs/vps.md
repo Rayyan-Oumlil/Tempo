@@ -5,6 +5,15 @@ Durée: environ 45 minutes la première fois. Coût: ~12 USD/mois (DigitalOcean 
 **Règle d'or:** un seul Tempo à la fois. Le journal des ordres (`journal/`) n'est pas dans git. Si le PC et le VPS lancent
 tous les deux `entries`, ils peuvent trader deux fois. On coupe le PC (étape 4) **avant** d'allumer le VPS (étape 6).
 
+## Installation réelle (2026-11-11, OVH VPS, Ubuntu 24.04)
+Ce qui a différé du guide DigitalOcean ci-dessous:
+- OVH crée l'utilisateur **`ubuntu`** (pas `root`) avec un mot de passe temporaire à changer à la première connexion (terminal requis). Ensuite, ajouter la clé SSH du PC dans `~/.ssh/authorized_keys`.
+- Le dépôt est cloné en tant que `ubuntu` dans `/opt/tempo` (`sudo mkdir /opt/tempo && sudo chown ubuntu:ubuntu /opt/tempo`), puis `sudo bash bootstrap.sh <url>`, puis `sudo chown -R ubuntu:ubuntu /opt/tempo`. Les commandes `docker` se lancent avec `sudo`.
+- La clé de déploiement GitHub peut être ajoutée depuis le PC: `gh repo deploy-key add tempo_deploy.pub --allow-write`.
+- Gateway démarre en une minute et se connecte sans 2FA au compte paper. Si un second Gateway (PC) est connecté, IBKR le déconnecte: couper le PC d'abord.
+- Le dépôt étant public, le ledger poussé par le VPS est public. `.env` et `deploy/gateway.env` ne sont jamais commités.
+- Le ledger est désormais écrit par le VPS: sur le PC, faire `git pull` avant de lire `ledger/`.
+
 ## 1. Créer le serveur
 1. Sur ton PC, si tu n'as pas déjà de clé SSH: `ssh-keygen -t ed25519` (Entrée partout).
 2. DigitalOcean → Create → Droplets: **Ubuntu 24.04**, **Basic, Regular, 2 GiB / 1 vCPU (12 USD)**, région **New York**,
