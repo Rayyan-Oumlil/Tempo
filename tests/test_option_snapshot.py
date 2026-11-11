@@ -17,7 +17,7 @@ def test_expiries_are_the_nearest_to_each_target_and_never_today_or_past():
 
 def test_strikes_are_the_listed_ones_nearest_to_minus5_atm_plus5_percent():
     strikes = [float(k) for k in range(700, 800)]
-    assert pick_strikes(strikes, 757.1) == [719.0, 757.0, 795.0]
+    assert pick_strikes(strikes, 757.1) == [720.0, 755.0, 795.0]   # 5-point strikes only
     assert pick_strikes([757.0], 757.1) == [757.0]                                  # a sparse chain collapses duplicates
 
 
