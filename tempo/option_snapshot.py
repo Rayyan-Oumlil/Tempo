@@ -2,7 +2,9 @@
 
 Usage: python -m tempo.option_snapshot      after the close (the late job runs it); needs Gateway; saves once per day.
 
-Writes data/snapshots/options/YYYYMMDD.json: for each underlying, the spot, the 20-day realised volatility, and for three
+Also rewrites data/snapshots/vol_series/{SPY,QQQ}_{IV,HV}.csv, IBKR's own 30-day implied and historical volatility series
+(5 years, so the volatility-premium history exists from day one; this is the reliable part).
+Writes data/snapshots/options/YYYYMMDD.json, best effort: for each underlying, the spot, the 20-day realised volatility, and for three
 expiries (about 7, 30 and 60 days out) the calls and puts at the money and 5% either side: implied volatility, delta,
 last, close, bid, ask (last and close are delayed and often stale: the implied volatility is the product). The point is a point-in-time history: implied minus realised volatility can be studied (and a
 defined-risk spread tracked on paper) once a few months exist. Nothing is traded.
@@ -19,10 +21,11 @@ from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 FOLDER = ROOT / "data" / "snapshots" / "options"
+SERIES_FOLDER = ROOT / "data" / "snapshots" / "vol_series"
 UNDERLYINGS = ("SPY", "QQQ")
 TARGET_DTE = (7, 30, 60)
 STRIKE_OFFSETS = (-0.05, 0.0, 0.05)
-MIN_VALID_SHARE = 0.8        # of the at-the-money contracts that must carry an implied volatility, else the day is not saved
+MIN_VALID_SHARE = 0.8        # of the at-the-money contracts expected to carry an implied volatility (a warning, not a failure, below it)
 ET = ZoneInfo("America/New_York")
 
 
@@ -71,6 +74,31 @@ def valid_share(records: Sequence[dict]) -> float:
     return sum(1 for r in records if r["iv"] is not None) / len(records) if records else 0.0
 
 
+def series_csv(bars) -> str:
+    """Daily bars of an IBKR volatility series as 'date,value' lines (the close of each bar)."""
+    lines = ["date,value", *(f"{b.date},{float(b.close):.6f}" for b in bars)]
+    return "\n".join(lines) + "\n"
+
+
+def collect_vol_series(ib, folder: Path = SERIES_FOLDER, duration: str = "5 Y") -> dict[str, int]:  # pragma: no cover - IBKR
+    """30-day implied (OPTION_IMPLIED_VOLATILITY) and historical volatility of SPY and QQQ, whole history rewritten each run."""
+    from ib_async import Stock
+    folder.mkdir(parents=True, exist_ok=True)
+    rows: dict[str, int] = {}
+    for name in UNDERLYINGS:
+        stock = Stock(name, "SMART", "USD")
+        ib.qualifyContracts(stock)
+        for what, tag in (("OPTION_IMPLIED_VOLATILITY", "IV"), ("HISTORICAL_VOLATILITY", "HV")):
+            bars = ib.reqHistoricalData(stock, "", duration, "1 day", what, useRTH=True, formatDate=1)
+            if not bars or len(bars) < 200:
+                raise RuntimeError(f"{name} {what}: IBKR returned {len(bars or [])} bars")
+            partial = folder / f"{name}_{tag}.partial"
+            partial.write_text(series_csv(bars), encoding="utf-8")
+            partial.replace(folder / f"{name}_{tag}.csv")
+            rows[f"{name}_{tag}"] = len(bars)
+    return rows
+
+
 def run(now: datetime, ib, folder: Path = FOLDER, say=print) -> int:  # pragma: no cover - glue, exercised live
     from ib_async import Option, Stock
 
@@ -81,6 +109,7 @@ def run(now: datetime, ib, folder: Path = FOLDER, say=print) -> int:  # pragma: 
     if not is_trading_day(day):
         say(f"option snapshot: {day} is not a trading day; nothing to do")
         return 0
+    say(f"volatility series refreshed (bars): {collect_vol_series(ib)}")   # the robust part: whole history, every run
     if target.exists():
         say(f"option snapshot: {target.name} already saved")
         return 0
@@ -113,9 +142,9 @@ def run(now: datetime, ib, folder: Path = FOLDER, say=print) -> int:  # pragma: 
                             "last": good(t.last), "close": good(t.close), "bid": good(t.bid), "ask": good(t.ask)})
             ib.cancelMktData(c)
         share = valid_share([r for r in records if r["atm"]])
-        if share < MIN_VALID_SHARE:
-            raise RuntimeError(f"{name}: only {share:.0%} of the at-the-money contracts carried an implied volatility")
-        out[name] = {"spot": spot, "rv20": realized_vol(bars.close), "contracts": records}
+        if share < MIN_VALID_SHARE:   # the delayed per-contract tick is intermittent: keep what came, say so, never fail the job
+            say(f"warning: {name}: only {share:.0%} of the at-the-money contracts carried an implied volatility (delayed ticks are patchy)")
+        out[name] = {"spot": spot, "rv20": realized_vol(bars.close), "atm_iv_share": share, "contracts": records}
         say(f"{name}: spot {spot}, rv20 {out[name]['rv20']:.3f}, {len(records)} contracts, {share:.0%} of at-the-money with implied vol, {valid_share(records):.0%} overall")
     folder.mkdir(parents=True, exist_ok=True)
     partial = target.with_suffix(".partial")

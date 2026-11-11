@@ -40,3 +40,26 @@ def test_good_filters_ibkr_non_values(raw, expected):
 def test_valid_share_counts_contracts_with_an_implied_vol():
     assert valid_share([{"iv": 0.1}, {"iv": None}, {"iv": 0.2}, {"iv": 0.3}]) == 0.75
     assert valid_share([]) == 0.0
+
+
+def test_series_csv_round_trips_through_the_vol_report_reader(tmp_path):
+    from types import SimpleNamespace
+
+    from tempo.option_snapshot import series_csv
+    from tempo.vol_report import read_series
+    bars = [SimpleNamespace(date=date(2026, 11, 10), close=0.1234567), SimpleNamespace(date=date(2026, 11, 11), close=0.2)]
+    path = tmp_path / "x.csv"
+    path.write_text(series_csv(bars), encoding="utf-8")
+    assert read_series(path) == {"2026-11-10": 0.123457, "2026-11-11": 0.2}
+
+
+def test_premium_is_implied_minus_the_realised_vol_21_sessions_later():
+    from tempo.vol_report import premiums, summarize
+    dates = [f"d{i:03d}" for i in range(60)]
+    iv = {d: 0.20 for d in dates}
+    hv = {d: 0.10 if i >= 21 else 0.50 for i, d in enumerate(dates)}      # HV today is irrelevant, HV 21 days later is 0.10
+    pairs = premiums(iv, hv)
+    assert pairs[0] == ("d000", pytest.approx(0.10)) and len(pairs) == 39
+    s = summarize(pairs)
+    assert s["mean"] == pytest.approx(0.10) and s["share_positive"] == 1.0
+    assert summarize(pairs[:5]) == {"n": 5.0}
