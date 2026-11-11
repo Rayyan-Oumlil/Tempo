@@ -110,3 +110,8 @@ A paper account only simulates fees. Check the real fee schedule before going li
 | 10349 "TIF set to DAY" | none (harmless) | `errorEvent` |
 
 `tempo.orders` therefore listens to `errorEvent` per connection (idea from thetagang's order supervision) and journals `reason_code`, `reason_kind` (`rejected` for 201, otherwise `error`) and `reason_text` on any order that did not fully fill. Plain cancels, 202 and 10349 leave no reason. Limit: the error can arrive after the status, so record the outcome once the order is done (the live test waits 1.5 s).
+
+## News (probed 2026-11-10, paper, no subscription)
+- `reqNewsProviders` lists 8 free providers: BRFG, BRFUPDN (Briefing.com), DJ-N, DJ-RTA, DJ-RTE, DJ-RTG, DJ-RTPRO, DJNL (Dow Jones). Per-stock headlines come mostly from DJ-N (Dow Jones Global Equity Trader).
+- `reqHistoricalNews(conId, "BRFG+...", "", "", 300)` returns up to 300 headlines, newest same-day. **With a start/end window the results are wrong** (headlines from before the start come back). Pass empty start/end and filter by `time` yourself.
+- `reqNewsArticle(providerCode, articleId)` returns the text (about 4,500 characters for a Barron's piece).

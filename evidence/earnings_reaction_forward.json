@@ -1,0 +1,40 @@
+{
+ "_note": "Pre-registered 2026-11-10 (evening), BEFORE the collector for this source was built and before any signal of this source was recorded or any return was seen. Do not edit to fit a result. To change a rule, add a dated entry to docs/research/log.md saying why, then edit.",
+ "purpose": "A high-volume, free-data test of post-earnings drift measured by the price reaction itself (no LLM, no paid fundamentals). Evidence for, from memory and NOT re-read on 2026-11-10: post-earnings-announcement drift (Ball and Brown 1968; Bernard and Thomas 1989), and drift after large announcement-day price reactions (Brandt, Kishore, Santa-Clara and Venkatachalam 2008). Evidence against, also from memory: the drift has weakened in recent decades and is concentrated in small, illiquid stocks (Chordia, Goyal, Sadka, Sadka and Shivakumar 2009). Earnings seasons produce hundreds of events a week, which is what a forward test needs.",
+ "source_name": "earnings_reaction_v1",
+ "data": "SEC EDGAR: the daily form index for 8-K filings, then each filer's submissions JSON (data.sec.gov/submissions/CIK##########.json), which gives the 8-K items and acceptanceDateTime (checked 2026-11-10 on AMZN: 8-K 2026-10-29, items 2.02,9.01, accepted 20:05:27Z). Tickers from the SEC company tickers file. Prices and volume: IBKR daily bars (TRADES, regular hours) for the stock and SPY. Free.",
+ "event_rule": "An 8-K whose items include 2.02, from an issuer with a plain letters-only ticker. The reaction day is the first trading day whose regular session OPENS after the acceptance time, and only if the acceptance time is outside regular hours (after 16:00 ET on the previous trading day, or before 09:30 ET on the reaction day, weekends and holidays included). Filings accepted between 09:30 and 16:00 ET are excluded. An 8-K/A does not count.",
+ "measure": "R = close(reaction day) / close(previous trading day) - 1, minus SPY's return over the same two closes.",
+ "universe_filter": "At the close of the reaction day: close at least 5.00 USD and 20-day average dollar volume over the 20 trading days BEFORE the reaction day at least 5,000,000 USD. Events failing the filter or without IBKR bars are counted and reported, not signalled.",
+ "signal_rule": "R at least +5.0% gives a long signal (direction +1); R at most -5.0% gives a short signal (direction -1); otherwise nothing.",
+ "emission": "Recorded after the close of the reaction day (the evening job, Gateway needed for bars); event_id is the reaction day (YYYYMMDD); price is the reaction-day close. One signal per issuer per reaction day; not repeated for the same issuer within 30 days.",
+ "timing": "Entry is the open of the first trading day strictly after the ledger date, as for every ledger source.",
+ "cost_assumption": "round_trip_cost 0.002 (20 bps): about 10 bps of IBKR commission (1 USD minimum per order on a ~2,000 USD position, one of ~10 at 20,000 USD) plus about 10 bps of spread for stocks passing the liquidity filter. Short borrow fees are not modelled.",
+ "ledger": "horizons 1, 5 and 21 trading days against SPY; primary horizon 21",
+ "multiplicity": "Four ledger sources now run at once (insider_cluster_v1, claude_earnings_v1, insider_opportunistic_v1, earnings_reaction_v1), so one could pass by luck. New sources therefore need t above 2.5 instead of 2.0 (about a one-sided 5% test split four ways, Bonferroni). The two earlier sources keep their registered 2.0, but any pass of theirs must be read with this in mind (docs/research/log.md, 2026-11-10).",
+ "full_test": {
+  "minimum_scored_signals_at_primary_horizon": 100,
+  "pass_all_of": [
+   "mean net excess return at 21 days (direction-adjusted: a short gains when the stock lags SPY) above 0.5% after the 20 bps cost",
+   "t-statistic of the 21-day net excess returns above 2.5",
+   "hit rate at 21 days above 51%",
+   "positive mean net excess in BOTH chronological halves of the scored signals",
+   "fewer than 10% of signals unscorable 30 trading days after their horizon"
+  ],
+  "reported_not_criteria": [
+   "1 and 5 day results",
+   "longs and shorts separately",
+   "by reaction size (5-10%, above 10%) and by dollar-volume tercile",
+   "events excluded by the intraday rule, the liquidity filter or missing bars (counts)"
+  ]
+ },
+ "known_limits": [
+  "The 8-K acceptance time is not the press-release time; a release before the open with an 8-K accepted after 09:30 is excluded, not misclassified.",
+  "Daily bars only: the reaction-day close already contains the first part of any drift; nothing intraday is used.",
+  "Most events cluster in four seasons (mid-January, April, July, October), so signals arrive in bursts.",
+  "Short signals assume the stock can be borrowed; IBKR shortability is not checked at signal time.",
+  "Not traded by the paper runner at first; ledger only."
+ ],
+ "if_fail": "Report it as a failure and stop spending effort on price-reaction drift.",
+ "if_pass": "Not proof and not real money: a second independent season, a realistic-size execution check at 20,000 USD, then evidence/gate.json."
+}
