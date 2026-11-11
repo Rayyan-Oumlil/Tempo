@@ -13,6 +13,21 @@ def assert_paper(account_id: str) -> None:
         raise RuntimeError(f"{account_id} is not a paper account (expected DU*/DF*). Refusing to continue.")
 
 
+def _masked(account_id: str) -> str:
+    return f"...{account_id[-3:]}" if len(account_id) > 3 else "..."
+
+
+def assert_expected(account_id: str, cfg: IbkrConfig) -> None:
+    """With orders enabled, the account must be pinned (IBKR_ACCOUNT) and match. Any pin is enforced, also read-only."""
+    if cfg.account is None:
+        if not cfg.readonly:
+            raise RuntimeError("Orders are enabled but IBKR_ACCOUNT is not set in .env: refusing to guess which account to trade.")
+        return
+    if account_id != cfg.account:
+        raise RuntimeError(f"Gateway is logged into account {_masked(account_id)}, not the IBKR_ACCOUNT {_masked(cfg.account)}. "
+                           "Log Gateway into the right account. Refusing to continue.")
+
+
 def connect(cfg: IbkrConfig) -> IB:
     """Connect once (no retry loop) and fail loudly. Disconnects again if the account is not paper."""
     ib = IB()
@@ -38,6 +53,7 @@ def connect(cfg: IbkrConfig) -> IB:
         raise ConnectionError("Gateway connected but reports no account yet; retry in a few seconds.")
     try:
         assert_paper(accounts[0])
+        assert_expected(accounts[0], cfg)
     except RuntimeError:
         ib.disconnect()
         raise

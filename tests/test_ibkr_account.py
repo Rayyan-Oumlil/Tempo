@@ -131,3 +131,34 @@ def test_last_close_returns_the_newest_close_and_fails_on_no_data():
     assert last_close(ok, NS(symbol="SPY")) == 11.5
     with pytest.raises(RuntimeError, match="No daily bars"):
         last_close(NS(reqHistoricalData=lambda *a, **k: []), NS(symbol="SPY"))
+
+
+# --- the expected-account pin (2026-11-10: Gateway was left on ANOTHER person's paper account, and the only check
+# was the DU prefix, so the scheduled entries would have connected to it)
+
+def cfg(**kw):
+    base = dict(host="127.0.0.1", port=4002, client_id=21, readonly=True, timeout=5.0)
+    return IbkrConfig(**{**base, **kw})
+
+
+def test_the_pinned_account_passes(fake_ib):
+    ibkr.connect(cfg(readonly=False, account="DU1234567"))
+    assert not fake_ib.instances[0].disconnected
+
+
+def test_another_paper_account_is_refused_when_one_is_pinned(fake_ib, monkeypatch):
+    monkeypatch.setattr(FakeConnectIB, "managedAccounts", lambda self: ["DU7777777"])
+    with pytest.raises(RuntimeError, match="IBKR_ACCOUNT") as err:
+        ibkr.connect(cfg(account="DU1234567"))
+    assert fake_ib.instances[0].disconnected
+    assert "DU7777777" not in str(err.value) and "DU1234567" not in str(err.value)   # never print full account ids
+
+
+def test_orders_enabled_without_a_pin_is_refused(fake_ib):
+    with pytest.raises(RuntimeError, match="IBKR_ACCOUNT"):
+        ibkr.connect(cfg(readonly=False, account=None))
+    assert fake_ib.instances[0].disconnected
+
+
+def test_read_only_without_a_pin_still_works(fake_ib):
+    ibkr.connect(cfg(readonly=True, account=None))
