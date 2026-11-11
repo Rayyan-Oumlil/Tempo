@@ -19,9 +19,10 @@ Usage: python -m tempo.ledger            show counts and statistics per source a
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 import time
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Callable
 from zoneinfo import ZoneInfo
@@ -116,6 +117,31 @@ def status_line(n: int, mean: float, t: float | None, hit: float) -> str:
     return text + (f"  NOT ENOUGH SCORED SIGNALS (need {MIN_SCORED}); nothing should be concluded" if n < MIN_SCORED else "")
 
 
+def power_line(values: list[float], horizon: int, per_week: float, t_target: float = 2.5) -> str:
+    """How many scored signals the current mean and spread would need to reach t_target, and how long at this pace.
+    An estimate from a noisy sample, not a promise: it moves as scores arrive."""
+    n = len(values)
+    if n < 2:
+        return f"  power ({horizon}-day): too few scores to estimate"
+    mean = sum(values) / n
+    sd = (sum((v - mean) ** 2 for v in values) / (n - 1)) ** 0.5
+    if mean <= 0 or sd == 0:
+        return f"  power ({horizon}-day): n={n}, mean {mean:+.2%}: no sample size reaches t={t_target} at this effect"
+    needed = math.ceil((t_target * sd / mean) ** 2)
+    if n >= needed:
+        return f"  power ({horizon}-day): n={n}, needs about {needed} scored for t={t_target} at this effect: already enough"
+    weeks = math.ceil((needed - n) / per_week) if per_week > 0 else None
+    pace = f"about {weeks} more weeks of signals at {per_week:.1f}/week, plus {horizon} trading days to score them" if weeks else "no pace yet"
+    return f"  power ({horizon}-day): n={n}, needs about {needed} scored for t={t_target} at this effect: {pace}"
+
+
+def _per_week(signals: list[dict]) -> float:
+    if not signals:
+        return 0.0
+    first, last = date.fromisoformat(signals[0]["date_et"]), date.fromisoformat(signals[-1]["date_et"])
+    return len(signals) / max(1.0, ((last - first).days + 1) / 7)
+
+
 def report(ledger: Ledger | None = None) -> str:
     ledger = ledger or Ledger()
     sources = sorted({s["source"] for s in ledger.signals()})
@@ -128,6 +154,10 @@ def report(ledger: Ledger | None = None) -> str:
         scored = ledger.scores(source)
         for h in HORIZONS:
             lines.append(f"  {h:>2}-day: " + status_line(*summarize([s for s in scored if s["horizon"] == h])))
+        primary = HORIZONS[-1]
+        at = primary if sum(1 for s in scored if s["horizon"] == primary) >= 2 else HORIZONS[0]
+        lines.append(power_line([s["net_excess"] for s in scored if s["horizon"] == at], at, _per_week(sigs))
+                     + ("" if at == primary else "  (1-day only: indicative, not the registered horizon)"))
     return "\n".join(lines)
 
 
