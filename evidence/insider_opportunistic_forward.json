@@ -1,0 +1,40 @@
+{
+ "_note": "Pre-registered 2026-11-10 (evening), BEFORE the collector for this source was built and before any signal of this source was recorded or any return was seen. Do not edit to fit a result. To change a rule, add a dated entry to docs/research/log.md saying why, then edit.",
+ "purpose": "Raise the number of insider signals per week (the 100-signal cluster test can only detect large effects) and follow the strongest published split: Cohen, Malloy and Pomorski (2012) found that opportunistic insiders earned about 82 bps a month value-weighted while routine insiders (same calendar month every year) earned about zero, in a sample ending 2007. Evidence against is the same as for insider_cluster_v1 (returns shrink at realistic size and in liquid stocks; see evidence/insider_forward.json).",
+ "source_name": "insider_opportunistic_v1",
+ "data": "Daily Form 4 filings, same collector and cache as insider_cluster_v1 (tempo/insider.py). For the routine test: the SEC Insider Transactions Data Sets (quarterly zips at https://www.sec.gov/files/structureddata/data/insider-transactions-data-sets/YYYYqN_form345.zip; checked 2026-11-10: 2022q4 to 2025q4 available, 2026 quarters not yet published) plus our own Form 4 cache for later months. Free.",
+ "transactions_counted": "As insider_cluster_v1 (non-derivative, code P, acquired A, not flagged 10b5-1, plain letters-only symbol), but only purchases by a reporting owner who is an officer or a director of the issuer (a pure 10% owner does not count).",
+ "routine_rule": "An owner (by reporting-owner CIK) is ROUTINE for a purchase in calendar month M of year Y if that owner made at least one counted open-market purchase, in any issuer, in month M of each of the three years Y-1, Y-2 and Y-3. Everyone else is OPPORTUNISTIC, including owners with no history (a deliberate departure from the 2012 paper, which left owners without three years of history unclassified, because purchases are rarer than trades and the purpose is more signals; see sensitivity).",
+ "signal_rule": "As of the collection day, per issuer, over filings dated in the trailing 3 calendar days: at least one opportunistic officer or director purchase, total opportunistic purchase value at least 50,000 USD, volume-weighted purchase price at least 5.00 USD.",
+ "emission": "One long signal (direction +1) per issuer; not repeated for the same issuer within 30 days (by this source); event_id is the date of the newest counted filing (YYYYMMDD). No short signals. Recorded at collection time. A signal may coincide with an insider_cluster_v1 signal on the same issuer; both are kept and the overlap is reported.",
+ "timing": "Same as insider_cluster_v1: entry is the open of the first trading day strictly after the ledger date.",
+ "cost_assumption": "round_trip_cost 0.005 (50 bps), as insider_cluster_v1.",
+ "ledger": "horizons 1, 5 and 21 trading days against SPY; primary horizon 21",
+ "multiplicity": "Four ledger sources now run at once (insider_cluster_v1, claude_earnings_v1, insider_opportunistic_v1, earnings_reaction_v1), so one could pass by luck. New sources therefore need t above 2.5 instead of 2.0 (about a one-sided 5% test split four ways, Bonferroni). The two earlier sources keep their registered 2.0, but any pass of theirs must be read with this in mind (docs/research/log.md, 2026-11-10).",
+ "full_test": {
+  "minimum_scored_signals_at_primary_horizon": 100,
+  "pass_all_of": [
+   "mean net excess return at 21 days above 1.0% (after the 50 bps cost)",
+   "t-statistic of the 21-day net excess returns above 2.5",
+   "hit rate at 21 days above 52%",
+   "positive mean net excess in BOTH chronological halves of the scored signals",
+   "fewer than 10% of signals unscorable 30 trading days after their horizon"
+  ],
+  "reported_not_criteria": [
+   "1 and 5 day results",
+   "liquid half vs illiquid half, split at the median 20-day average dollar volume before entry (IBKR daily bars)",
+   "only owners WITH at least one purchase in each of the three previous years (the paper's stricter classification)",
+   "overlap with insider_cluster_v1 and the result without overlapping signals",
+   "by purchase size (50-250k, 250k-1M, above 1M USD) and by officer vs director",
+   "the same sensitivity exclusions as insider_cluster_v1 (NONE, SPAC units and warrants, IPO allocations)"
+  ]
+ },
+ "known_limits": [
+  "Officer and director flags come from each Form 4's reportingOwnerRelationship; a role can differ between issuers.",
+  "Routine history before 2022q4 is not downloaded; three years back from 2026 needs 2023 to 2025, which is available.",
+  "Many issuers are illiquid microcaps; the 50 bps cost may be too kind (see the liquid/illiquid split).",
+  "Not traded by the paper runner at first; ledger only. Adding it to paper trading is a separate, dated decision."
+ ],
+ "if_fail": "Report it as a failure. If insider_cluster_v1 also fails, stop spending effort on insider purchases.",
+ "if_pass": "Not proof and not real money: a second independent period, a realistic-size execution check at 20,000 USD, then evidence/gate.json."
+}
