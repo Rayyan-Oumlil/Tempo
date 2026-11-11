@@ -175,3 +175,26 @@ def test_a_source_can_declare_its_own_round_trip_cost(tmp_path):
     assert score["net_excess"] == pytest.approx(score["excess"] - 0.005)
     default = score_signal(sig(make_ledger(tmp_path / "d")), STOCK, BENCH, horizon=3)
     assert default["round_trip_cost"] == ROUND_TRIP_COST
+
+
+# --- power: how many signals a verdict needs at the current effect size (added 2026-11-10)
+
+def test_power_line_estimates_the_signals_needed_for_the_target_t():
+    from tempo.ledger import power_line
+    values = [0.03, -0.01, 0.02, 0.00, 0.01] * 4          # mean 1%, sample sd about 1.45%
+    line = power_line(values, horizon=21, per_week=10.0, t_target=2.5)
+    assert "n=20" in line and "needs about 14 scored" in line
+    assert "already enough" in line
+
+
+def test_power_line_with_no_positive_effect_says_no_sample_size_helps():
+    from tempo.ledger import power_line
+    assert "no sample size" in power_line([-0.01, 0.0, -0.02], horizon=5, per_week=3.0)
+    assert "too few" in power_line([0.01], horizon=21, per_week=1.0)
+
+
+def test_power_line_reports_weeks_at_the_current_pace():
+    from tempo.ledger import power_line
+    values = [0.02, -0.02, 0.03, -0.01]                     # mean 0.5%, sd about 2.38% -> about 142 needed
+    line = power_line(values, horizon=21, per_week=20.0, t_target=2.5)
+    assert "needs about 142 scored" in line and "about 7 more weeks" in line
