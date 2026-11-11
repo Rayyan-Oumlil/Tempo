@@ -1,0 +1,39 @@
+name: vps-alive
+
+# External dead-man check: runs on GitHub, so it still fires when the VPS (and its own watchdog and email) is dead.
+# A failed run emails the repo owner (GitHub default notification for failed workflows).
+# Needs the repository secret VPS_HOST (the server address; the repo is public, so it is never committed).
+on:
+  schedule:
+    - cron: "*/20 * * * *"
+  workflow_dispatch:
+    inputs:
+      host:
+        description: "Override the host (to test the failure path, use 192.0.2.1)"
+        required: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Server answers on SSH (3 tries, 20 s apart)
+        env:
+          HOST: ${{ inputs.host || secrets.VPS_HOST }}
+        run: |
+          if [ -z "$HOST" ]; then echo "::error::VPS_HOST secret is not set"; exit 1; fi
+          for i in 1 2 3; do
+            banner=$(timeout 10 bash -c "exec 3<>/dev/tcp/$HOST/22 && head -c 4 <&3" 2>/dev/null || true)
+            if [ "$banner" = "SSH-" ]; then echo "SSH banner received (try $i)"; exit 0; fi
+            echo "try $i: no SSH banner"; sleep 20
+          done
+          echo "::error::VPS did not answer on port 22 three times in a row"; exit 1
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+      - name: Evening job pushed today's ledger (weekdays, after 18:30 ET)
+        run: |
+          now_et=$(TZ=America/New_York date +%H%M); dow=$(TZ=America/New_York date +%u); today=$(TZ=America/New_York date +%F)
+          if [ "$dow" -gt 5 ] || [ "$now_et" -lt 1830 ]; then echo "not due yet, skipping"; exit 0; fi
+          if git log --since="$today 00:00 -0500" --format=%s | grep -q "^ledger:"; then echo "ledger commit for $today found"; exit 0; fi
+          echo "::error::No ledger commit from the VPS today ($today): the evening job did not finish"; exit 1
