@@ -1,0 +1,149 @@
+"""Analyst upgrades and downgrades (evidence/analyst_actions_forward.json), recorded as forward signals.
+
+Usage: python -m tempo.analyst_actions      after 16:20 ET on a trading day (the evening job runs it); needs Gateway.
+
+For every symbol of the frozen S&P 500 universe, read IBKR's free Briefing.com Analyst Actions headlines (BRFUPDN),
+keep upgrades and downgrades timed between the previous close and today's close, and record a long (upgrade) or
+short (downgrade) signal for liquid stocks. Entry is the next session's open, so the announcement day is not traded.
+"""
+from __future__ import annotations
+
+import re
+import sys
+from datetime import date, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
+
+from tempo.daybars import day_bars, liquid, load_universe
+from tempo.hours import is_trading_day
+from tempo.ledger import Ledger, SignalRefused
+
+SOURCE = "analyst_actions_v1"
+UNIVERSE = "evidence/universe_sp500_20261111.txt"
+PROVIDER = "BRFUPDN"
+PER_SYMBOL = 50
+ROUND_TRIP_COST = 0.002
+ET = ZoneInfo("America/New_York")
+CLOSE = time(16, 0)
+HEADLINE = re.compile(r"^(?:\{[^}]*\})?!?(?P<firm>.+?) (?P<action>upgraded|downgraded) (?P<company>.+?) "
+                      r"\((?P<symbol>[A-Z]{1,5})\) to (?P<rating>.+?)(?: with target \$[\d.,]+)?$")
+
+
+def parse_headline(text: str) -> dict | None:
+    m = HEADLINE.match(text.strip())
+    if not m:
+        return None
+    return {"symbol": m.group("symbol"), "direction": 1 if m.group("action") == "upgraded" else -1,
+            "firm": m.group("firm").strip(), "rating": m.group("rating").strip()}
+
+
+def _previous_trading_day(day: date) -> date:
+    d = day - timedelta(days=1)
+    while not is_trading_day(d):
+        d -= timedelta(days=1)
+    return d
+
+
+def window(day: date) -> tuple[datetime, datetime]:
+    start = datetime.combine(_previous_trading_day(day), CLOSE, tzinfo=ET).astimezone(timezone.utc)
+    end = datetime.combine(day, CLOSE, tzinfo=ET).astimezone(timezone.utc)
+    return start, end
+
+
+def _as_utc(stamp) -> datetime:
+    if isinstance(stamp, str):
+        stamp = datetime.strptime(stamp[:19], "%Y-%m-%d %H:%M:%S")
+    return stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)
+
+
+def direction_for(symbol: str, headlines: list[tuple], day: date) -> int | None:
+    start, end = window(day)
+    found = set()
+    for stamp, text in headlines:
+        p = parse_headline(text)
+        if p and p["symbol"] == symbol and start < _as_utc(stamp) <= end:
+            found.add(p["direction"])
+    return found.pop() if len(found) == 1 else None
+
+
+def fetch_news(ib, con_id: int) -> list | None:
+    """Headlines for one stock, or None when the request failed. ib_async returns None on its hard 4 s timeout
+    instead of raising, and [] for a real empty answer, so the two must not be merged with `or []`."""
+    try:
+        return ib.reqHistoricalNews(con_id, PROVIDER, "", "", PER_SYMBOL)
+    except Exception:  # noqa: BLE001 - counted by the caller, never hidden
+        return None
+
+
+def record_signals(hits: list[dict], ledger: Ledger) -> list[dict]:
+    recorded = []
+    for h in hits:
+        try:
+            recorded.append(ledger.record_signal(
+                source=SOURCE, symbol=h["symbol"], direction=h["direction"], event_id=h["day"].replace("-", ""),
+                price=h["close"], features={"round_trip_cost": ROUND_TRIP_COST, "adv20": round(h["adv20"])}))
+        except SignalRefused:
+            continue
+    return recorded
+
+
+def run(now: datetime, ib, ledger: Ledger, say=print) -> int:  # pragma: no cover - glue, exercised live
+    from ib_async import Stock
+
+    from tempo.earnings_reaction import ready_to_record
+    day = now.astimezone(ET).date()
+    if not ready_to_record(now, day):
+        say("not recording: analyst actions are only recorded on the signal day after 16:20 ET")
+        return 0
+    counts = {"symbols": 0, "not_qualified": 0, "news_failed": 0, "actions": 0, "no_bar": 0, "short_history": 0,
+              "filtered": 0, "signal": 0}
+    hits = []
+    for symbol in load_universe(UNIVERSE):
+        counts["symbols"] += 1
+        contract = Stock(symbol, "SMART", "USD")
+        if not ib.qualifyContracts(contract):
+            counts["not_qualified"] += 1
+            continue
+        news = fetch_news(ib, contract.conId)
+        if news is None:
+            counts["news_failed"] += 1
+            continue
+        direction = direction_for(symbol, [(n.time, n.headline) for n in news], day)
+        if direction is None:
+            continue
+        counts["actions"] += 1
+        bars = day_bars(ib, symbol)
+        m = liquid(bars, day.isoformat()) if bars else {"status": "no_bar"}
+        if m["status"] != "ok":
+            counts[m["status"]] += 1
+            continue
+        counts["signal"] += 1
+        hits.append({"symbol": symbol, "direction": direction, "day": day.isoformat(), "close": m["close"], "adv20": m["adv20"]})
+    recorded = record_signals(hits, ledger)
+    say(f"analyst actions {day}: {counts}; new signals recorded: {len(recorded)}")
+    for r in recorded:
+        say(f"  {r['symbol']:<6} {'LONG ' if r['direction'] == 1 else 'SHORT'}")
+    return 0
+
+
+def main() -> int:  # pragma: no cover - entry point
+    from dotenv import load_dotenv
+
+    from tempo.config import load_config
+    from tempo.ibkr import connect
+
+    load_dotenv()
+    ib = connect(load_config())
+    ib.RequestTimeout = 30
+    try:
+        return run(datetime.now(ET), ib, Ledger())
+    finally:
+        ib.disconnect()
+
+
+if __name__ == "__main__":  # pragma: no cover
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+    try:
+        raise SystemExit(main())
+    except Exception as err:  # noqa: BLE001 - fail loudly with a clear line, non-zero exit
+        print(f"[FAIL] {type(err).__name__}: {err}", file=sys.stderr)
+        raise SystemExit(1)
