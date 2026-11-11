@@ -60,7 +60,8 @@ def steps_for(job: str, today: date) -> list[Step]:
     if job == "exits":
         return [Step((py, "-m", "tempo.paper_run", "exits"), orders)]
     if job == "evening":
-        return [Step((py, "-m", "tempo.earnings_reaction")), Step((py, "-m", "tempo.ledger_score")), Step((py, "-m", "tempo.ledger"))]
+        return [Step((py, "-m", "tempo.earnings_reaction")), Step((py, "-m", "tempo.analyst_actions")),
+                Step((py, "-m", "tempo.weekly_reversal")), Step((py, "-m", "tempo.ledger_score")), Step((py, "-m", "tempo.ledger"))]
     raise ValueError(f"unknown job {job!r}; expected one of {JOBS}")
 
 
