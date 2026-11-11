@@ -33,6 +33,7 @@ MAX_DOCUMENT_CHARS = 500_000
 NEW_YORK = ZoneInfo("America/New_York")
 INDEX_ROW = re.compile(r"^4\s+(.+?)\s+(\d+)\s+(\d{8})\s+(edgar/\S+)\s*$")
 SYMBOL = re.compile(r"^[A-Z]{1,5}$")
+PLACEHOLDER_SYMBOLS = frozenset({"NONE", "NA", "NULL", "TBD"})  # EDGAR filers write these when the issuer has no ticker
 DOC = re.compile(r"<ownershipDocument>.*?</ownershipDocument>", re.DOTALL)
 
 
@@ -73,7 +74,7 @@ def parse_form4(submission: str, filing_date: str, accession: str) -> list[dict]
     except ET.ParseError:
         return []
     symbol = _text(root, "issuer/issuerTradingSymbol").upper()
-    if not SYMBOL.match(symbol) or _text(root, "aff10b5One").lower() in ("1", "true"):  # both spellings occur
+    if not SYMBOL.match(symbol) or symbol in PLACEHOLDER_SYMBOLS or _text(root, "aff10b5One").lower() in ("1", "true"):  # both spellings occur
         return []
     owners = [(o.text or "").strip() for o in root.findall("reportingOwner/reportingOwnerId/rptOwnerCik")]
     officer_director = [_text(o, "reportingOwnerId/rptOwnerCik") for o in root.findall("reportingOwner")

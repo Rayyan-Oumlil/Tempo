@@ -22,6 +22,7 @@ UNIVERSE = "evidence/universe_sp500_20261111.txt"
 PROVIDER = "BRFUPDN"
 PER_SYMBOL = 50
 ROUND_TRIP_COST = 0.002
+MAX_NEWS_FAILED_SHARE = 0.02   # more than this share of unanswered symbols means the run is incomplete: fail, do not pretend
 ET = ZoneInfo("America/New_York")
 CLOSE = time(16, 0)
 HEADLINE = re.compile(r"^(?:\{[^}]*\})?!?(?P<firm>.+?) (?P<action>upgraded|downgraded) (?P<company>.+?) "
@@ -96,7 +97,8 @@ def run(now: datetime, ib, ledger: Ledger, say=print) -> int:  # pragma: no cove
         return 0
     counts = {"symbols": 0, "not_qualified": 0, "news_failed": 0, "actions": 0, "no_bar": 0, "short_history": 0,
               "filtered": 0, "signal": 0}
-    hits = []
+    hits: list[dict] = []
+    failed: list[str] = []
     for symbol in load_universe(UNIVERSE):
         counts["symbols"] += 1
         contract = Stock(symbol, "SMART", "USD")
@@ -104,8 +106,11 @@ def run(now: datetime, ib, ledger: Ledger, say=print) -> int:  # pragma: no cove
             counts["not_qualified"] += 1
             continue
         news = fetch_news(ib, contract.conId)
+        if news is None:   # one retry: a 4 s timeout is usually a busy moment, not a missing answer
+            news = fetch_news(ib, contract.conId)
         if news is None:
             counts["news_failed"] += 1
+            failed.append(symbol)
             continue
         direction = direction_for(symbol, [(n.time, n.headline) for n in news], day)
         if direction is None:
@@ -122,6 +127,11 @@ def run(now: datetime, ib, ledger: Ledger, say=print) -> int:  # pragma: no cove
     say(f"analyst actions {day}: {counts}; new signals recorded: {len(recorded)}")
     for r in recorded:
         say(f"  {r['symbol']:<6} {'LONG ' if r['direction'] == 1 else 'SHORT'}")
+    if counts["symbols"] and len(failed) / counts["symbols"] > MAX_NEWS_FAILED_SHARE:
+        say(f"[FAIL] {len(failed)} of {counts['symbols']} symbols got no news answer even after a retry: {failed[:20]}")
+        return 1
+    if failed:
+        say(f"no news answer for {len(failed)} symbols (under the {MAX_NEWS_FAILED_SHARE:.0%} limit): {failed}")
     return 0
 
 

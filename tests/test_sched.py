@@ -183,3 +183,10 @@ def test_the_evening_job_starts_after_the_delayed_close_has_settled():
     script = (__import__("pathlib").Path(__file__).parents[1] / "tools" / "sched" / "register.ps1").read_text(encoding="utf-8")
     times = re.search(r'Add-Job "Tempo-Evening"\s+"evening"\s+@\(([^)]*)\)', script).group(1)
     assert '"16:20"' not in times and '"16:35"' in times
+
+
+def test_ibkr_chatter_is_folded_so_the_real_summary_survives_the_tail():
+    from tempo.sched import _tail
+    out = "summary line\n" + "reqHistoricalNewsAsync: Timeout\n" * 20 + "Error 200, reqId 1: No security definition\n"
+    tail = _tail(out, 12)
+    assert "summary line" in tail and "21 repetitive IBKR notices folded" in tail and "Timeout" not in tail
