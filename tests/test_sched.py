@@ -142,11 +142,11 @@ def test_the_evening_job_commits_the_ledger_only_when_it_changed(tmp_path):
                  notify=rec.notify, log=rec.log, alerts_path=tmp_path / "a.json")
     assert rc == 0
     names = [a[0] if a[0] == "git" else a[-1] for a in seen]
-    assert names == ["tempo.ledger_score", "tempo.ledger", "git", "git", "git", "git"]   # add, diff, commit, push
+    assert names == ["tempo.earnings_reaction", "tempo.ledger_score", "tempo.ledger", "git", "git", "git", "git"]   # add, diff, commit, push
     seen.clear()
     run_job("evening", now=et(ENTRY, 16, 20), ledger=make_ledger(tmp_path), paper=Journal(tmp_path / "p.jsonl"), run=lambda st: (seen.append(st.argv), (0, "ok"))[1],
             notify=rec.notify, log=rec.log, alerts_path=tmp_path / "a.json")
-    assert [a[0] if a[0] == "git" else a[-1] for a in seen] == ["tempo.ledger_score", "tempo.ledger", "git", "git"]   # add, diff: nothing staged, stop
+    assert [a[0] if a[0] == "git" else a[-1] for a in seen] == ["tempo.earnings_reaction", "tempo.ledger_score", "tempo.ledger", "git", "git"]   # add, diff: nothing staged, stop
 
 
 def test_is_due_is_false_for_unknown_jobs(tmp_path):
@@ -158,3 +158,28 @@ def test_step_is_hashable_and_immutable():
     s = Step(("a",), (("K", "V"),))
     with pytest.raises(AttributeError):
         s.argv = ("b",)  # type: ignore[misc]
+
+
+
+def test_one_failing_evening_step_does_not_stop_the_others_or_the_commit_but_still_alerts(tmp_path):
+    rec = Rec()
+    seen = []
+
+    def run(step):
+        seen.append(step.argv)
+        if step.argv[-1] == "tempo.earnings_reaction":
+            return 1, "[FAIL] SEC feed down"
+        return (1, "") if step.argv[:3] == ("git", "diff", "--cached") else (0, "ok")
+
+    rc = run_job("evening", now=et(ENTRY, 16, 35), ledger=make_ledger(tmp_path), paper=Journal(tmp_path / "p.jsonl"), run=run,
+                 notify=rec.notify, log=rec.log, alerts_path=tmp_path / "a.json")
+    assert rc == 1
+    assert ("git", "push") in seen and any(a[-1] == "tempo.ledger_score" for a in seen)
+    assert rec.notes and "SEC feed down" in rec.notes[0][1]
+
+
+def test_the_evening_job_starts_after_the_delayed_close_has_settled():
+    import re
+    script = (__import__("pathlib").Path(__file__).parents[1] / "tools" / "sched" / "register.ps1").read_text(encoding="utf-8")
+    times = re.search(r'Add-Job "Tempo-Evening"\s+"evening"\s+@\(([^)]*)\)', script).group(1)
+    assert '"16:20"' not in times and '"16:35"' in times

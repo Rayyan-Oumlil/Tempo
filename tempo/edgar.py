@@ -50,6 +50,10 @@ _THROTTLE = Throttle()
 
 
 def fetch(url: str) -> str:
+    return fetch_bytes(url).decode("utf-8", "replace")
+
+
+def fetch_bytes(url: str, timeout: float = TIMEOUT) -> bytes:
     load_dotenv()
     agent = os.environ.get("SEC_USER_AGENT")
     if not agent:
@@ -57,8 +61,8 @@ def fetch(url: str) -> str:
     _THROTTLE.wait()
     req = urllib.request.Request(url, headers={"User-Agent": agent, "Accept-Encoding": "identity"})
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-            return r.read().decode("utf-8", "replace")
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.read()
     except urllib.error.HTTPError as exc:
         raise EdgarError(url, f"HTTP {exc.code}") from exc
     except (urllib.error.URLError, TimeoutError) as exc:

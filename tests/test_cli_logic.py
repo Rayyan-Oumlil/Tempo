@@ -103,6 +103,8 @@ def test_the_insider_command_processes_days_in_order_then_records_signals_for_th
     monkeypatch.setattr(insider, "load_cache", lambda *a, **k: (set(), buys))
     ledger = ledger_at(tmp_path / "l.jsonl")
     monkeypatch.setattr(insider, "Ledger", lambda: ledger)
+    import tempo.insider_history
+    monkeypatch.setattr(tempo.insider_history, "load_index", lambda *a, **k: {"years": [2023, 2024, 2025], "owners": {}})
     assert insider.main(["2026-11-02", "2026-10-30"]) == 0
     assert processed == [date(2026, 11, 2), date(2026, 10, 30)]                     # in the order given
     assert "clusters as of 2026-10-30: 0" in capsys.readouterr().out                # signals are computed as of the LAST date given
