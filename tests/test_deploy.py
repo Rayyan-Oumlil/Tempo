@@ -44,3 +44,8 @@ def test_gateway_image_is_pinned_and_ports_are_localhost_only():
 
 def test_gateway_credentials_file_is_never_committed():
     assert "deploy/gateway.env" in (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+
+
+def test_files_run_on_linux_have_unix_line_endings():
+    for name in ("deploy/bootstrap.sh", "deploy/crontab"):
+        assert b"\r\n" not in (ROOT / name).read_bytes(), name

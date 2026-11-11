@@ -1,3 +1,6 @@
 # Keep line endings identical on Windows and Linux so diffs, golden outputs and CI agree.
 * text=auto eol=lf
 *.csv text eol=lf
+*.sh text eol=lf
+deploy/crontab text eol=lf
+deploy/*.yml text eol=lf
