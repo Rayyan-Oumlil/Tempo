@@ -20,7 +20,14 @@ Form Type   Company Name                                                  CIK   
 
 
 def form4(owners=(("0001", "Alice A"),), symbol="ACME", txs=(("P", "A", 1000, 12.5, "2026-10-30"),), aff="0", issuer_cik="0000555"):
-    owner_xml = "".join(f"<reportingOwner><reportingOwnerId><rptOwnerCik>{c}</rptOwnerCik><rptOwnerName>{n}</rptOwnerName></reportingOwnerId></reportingOwner>" for c, n in owners)
+    def rel_xml(rel):
+        if not rel:
+            return ""
+        flag = lambda word: "1" if word in rel else "0"   # noqa: E731
+        return (f"<reportingOwnerRelationship><isDirector>{flag('director')}</isDirector><isOfficer>{flag('officer')}</isOfficer>"
+                f"<isTenPercentOwner>{flag('ten')}</isTenPercentOwner></reportingOwnerRelationship>")
+    owner_xml = "".join(f"<reportingOwner><reportingOwnerId><rptOwnerCik>{o[0]}</rptOwnerCik><rptOwnerName>{o[1]}</rptOwnerName></reportingOwnerId>"
+                        f"{rel_xml(o[2] if len(o) > 2 else '')}</reportingOwner>" for o in owners)
     tx_xml = "".join(
         f"<nonDerivativeTransaction><transactionDate><value>{d}</value></transactionDate><transactionCoding><transactionCode>{code}</transactionCode></transactionCoding>"
         f"<transactionAmounts><transactionShares><value>{sh}</value></transactionShares><transactionPricePerShare><value>{px}</value></transactionPricePerShare>"
@@ -40,7 +47,7 @@ def test_index_lists_each_form_4_filing_once_and_ignores_other_forms():
 def test_a_purchase_is_extracted_with_value_and_owner():
     buys = parse_form4(form4(), filing_date="2026-11-02", accession="A1")
     assert buys == [{"accession": "A1", "filing_date": "2026-11-02", "trade_date": "2026-10-30", "issuer_cik": "0000555",
-                     "symbol": "ACME", "owners": ["0001"], "shares": 1000.0, "price": 12.5, "value": 12500.0}]
+                     "symbol": "ACME", "owners": ["0001"], "officer_director": [], "shares": 1000.0, "price": 12.5, "value": 12500.0}]
 
 
 def test_only_open_market_purchases_count():
@@ -194,3 +201,17 @@ def test_a_failed_filing_is_retried_next_time_not_marked_as_seen(tmp_path):
     urls = []
     again = process_day(date(2026, 11, 2), fetcher=fake_fetcher(urls), cache=cache, say=lambda *_: None)
     assert again["new"] == 1 and again["failed"] == 0 and len(urls) == 2   # the index and only the failed filing
+
+
+
+def test_officers_and_directors_are_recorded_but_pure_ten_percent_owners_are_not():
+    owners = (("0001", "Dir", "director"), ("0002", "Ten", "ten"), ("0003", "Both", "director officer"), ("0004", "NoRel"))
+    (buy,) = parse_form4(form4(owners=owners), "2026-11-02", "A1")
+    assert buy["officer_director"] == ["0001", "0003"]
+
+
+def test_the_10b5_1_flag_written_as_true_is_ignored_too():
+    """Found 2026-11-10 in the SEC data sets: about 3% of Form 4s write the flag as 'true' instead of '1'."""
+    assert parse_form4(form4(aff="true"), "2026-11-02", "A1") == []
+    assert parse_form4(form4(aff="TRUE"), "2026-11-02", "A1") == []
+    assert parse_form4(form4(aff="false"), "2026-11-02", "A1") != []

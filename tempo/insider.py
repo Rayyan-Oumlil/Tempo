@@ -73,9 +73,11 @@ def parse_form4(submission: str, filing_date: str, accession: str) -> list[dict]
     except ET.ParseError:
         return []
     symbol = _text(root, "issuer/issuerTradingSymbol").upper()
-    if not SYMBOL.match(symbol) or _text(root, "aff10b5One") == "1":
+    if not SYMBOL.match(symbol) or _text(root, "aff10b5One").lower() in ("1", "true"):  # both spellings occur
         return []
     owners = [(o.text or "").strip() for o in root.findall("reportingOwner/reportingOwnerId/rptOwnerCik")]
+    officer_director = [_text(o, "reportingOwnerId/rptOwnerCik") for o in root.findall("reportingOwner")
+                        if any(_text(o, f"reportingOwnerRelationship/{flag}").lower() in ("1", "true") for flag in ("isDirector", "isOfficer"))]
     buys = []
     for tx in root.findall("nonDerivativeTable/nonDerivativeTransaction"):
         if _text(tx, "transactionCoding/transactionCode") != "P" or _text(tx, "transactionAmounts/transactionAcquiredDisposedCode/value") != "A":
@@ -87,7 +89,8 @@ def parse_form4(submission: str, filing_date: str, accession: str) -> list[dict]
             continue
         if shares > 0 and price > 0:
             buys.append({"accession": accession, "filing_date": filing_date, "trade_date": _text(tx, "transactionDate/value"),
-                         "issuer_cik": _text(root, "issuer/issuerCik"), "symbol": symbol, "owners": owners, "shares": shares,
+                         "issuer_cik": _text(root, "issuer/issuerCik"), "symbol": symbol, "owners": owners,
+                         "officer_director": officer_director, "shares": shares,
                          "price": price, "value": shares * price})
     return buys
 
@@ -182,6 +185,13 @@ def main(dates: list[str]) -> int:
     print(f"clusters as of {days[-1]}: {len(found)}; new signals recorded: {len(recorded)}")
     for s in recorded:
         print(f"  {s['symbol']:<6} {s['features']['n_insiders']} insiders, {s['features']['value']:,} USD at {s['features']['vwap']}")
+    from tempo.insider_history import load_index
+    from tempo.insider_opp import opportunistic_signals, record_signals
+    found_opp = opportunistic_signals(buys, days[-1], load_index())
+    recorded_opp = record_signals(found_opp, Ledger())
+    print(f"opportunistic as of {days[-1]}: {len(found_opp)}; new signals recorded: {len(recorded_opp)}")
+    for s in recorded_opp:
+        print(f"  {s['symbol']:<6} {s['features']['n_opportunistic']} opportunistic, {s['features']['value']:,} USD at {s['features']['vwap']}")
     return 0
 
 
@@ -191,6 +201,6 @@ if __name__ == "__main__":
         if len(sys.argv) < 2:
             raise ValueError("usage: python -m tempo.insider DATE [DATE ...]")
         raise SystemExit(main(sys.argv[1:]))
-    except (EdgarError, ValueError) as err:
+    except (EdgarError, ValueError, RuntimeError) as err:  # RuntimeError covers HistoryMissing
         print(f"[FAIL] {err}", file=sys.stderr)
         raise SystemExit(1)

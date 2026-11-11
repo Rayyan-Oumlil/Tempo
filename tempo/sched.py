@@ -61,7 +61,7 @@ def steps_for(job: str, today: date) -> list[Step]:
     if job == "exits":
         return [Step((py, "-m", "tempo.paper_run", "exits"), orders)]
     if job == "evening":
-        return [Step((py, "-m", "tempo.ledger_score")), Step((py, "-m", "tempo.ledger"))]
+        return [Step((py, "-m", "tempo.earnings_reaction")), Step((py, "-m", "tempo.ledger_score")), Step((py, "-m", "tempo.ledger"))]
     raise ValueError(f"unknown job {job!r}; expected one of {JOBS}")
 
 
@@ -152,17 +152,23 @@ def run_job(job: str, *, now: datetime, final: bool = False, ledger: Ledger | No
             log(f"{job}: nothing to do")
             return 0
         outputs: list[str] = []
+        failures: list[str] = []
+        keep_going = job == "evening"   # the evening steps are independent: one failing must not stop scoring or the commit
         for step in steps_for(job, today):
             rc, out = run(step)
             log(f"{job}: {' '.join(step.argv[-3:])} -> rc {rc}\n{_tail(out, 12)}")
             if rc:
-                return fail(f"{' '.join(step.argv[-2:])} exited {rc}\n{_tail(out)}")
+                failures.append(f"{' '.join(step.argv[-2:])} exited {rc}\n{_tail(out)}")
+                if not keep_going:
+                    return fail(failures[0])
             outputs.append(out)
         if job == "evening":
             rc, out = _commit_ledger(run, today)
             log(f"{job}: git -> rc {rc}: {_tail(out, 3)}")
             if rc:
-                return fail(f"git exited {rc}\n{_tail(out)}")
+                failures.append(f"git exited {rc}\n{_tail(out)}")
+        if failures:
+            return fail("\n".join(failures))
         if job in ("entries", "exits"):
             notify(f"Tempo {job} done", _tail(outputs[-1], 3))
         return 0
