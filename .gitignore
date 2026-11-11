@@ -11,3 +11,4 @@ goldens/data/
 .hypothesis/
 logs/
 deploy/gateway.env
+backups/

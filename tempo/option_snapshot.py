@@ -40,9 +40,10 @@ def pick_expiries(expirations: Sequence[str], today: date, targets: Sequence[int
 
 
 def pick_strikes(strikes: Sequence[float], spot: float, offsets: Sequence[float] = STRIKE_OFFSETS) -> list[float]:
+    wide = [s for s in strikes if s % 5 == 0] or list(strikes)   # 5-point strikes are listed at every expiry; odd ones often are not
     out: list[float] = []
     for off in offsets:
-        k = min(strikes, key=lambda s: abs(s - spot * (1 + off)))
+        k = min(wide, key=lambda s: abs(s - spot * (1 + off)))
         if k not in out:
             out.append(k)
     return out
@@ -100,7 +101,7 @@ def run(now: datetime, ib, folder: Path = FOLDER, say=print) -> int:  # pragma: 
             raise RuntimeError(f"no SMART option chain for {name}")
         contracts = [Option(name, e, k, r, "SMART") for e in pick_expiries(chain.expirations, day)
                      for k in pick_strikes(sorted(chain.strikes), spot) for r in ("C", "P")]
-        contracts = [c for c in ib.qualifyContracts(*contracts) if c.conId]
+        contracts = [c for c in ib.qualifyContracts(*contracts) if c is not None and c.conId]   # unlisted strikes come back as None
         tickers = [ib.reqMktData(c, "106", False, False) for c in contracts]
         ib.sleep(8)
         records = []
