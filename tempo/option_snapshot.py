@@ -4,7 +4,7 @@ Usage: python -m tempo.option_snapshot      after the close (the late job runs i
 
 Writes data/snapshots/options/YYYYMMDD.json: for each underlying, the spot, the 20-day realised volatility, and for three
 expiries (about 7, 30 and 60 days out) the calls and puts at the money and 5% either side: implied volatility, delta,
-last, close, bid, ask. The point is a point-in-time history: implied minus realised volatility can be studied (and a
+last, close, bid, ask (last and close are delayed and often stale: the implied volatility is the product). The point is a point-in-time history: implied minus realised volatility can be studied (and a
 defined-risk spread tracked on paper) once a few months exist. Nothing is traded.
 """
 from __future__ import annotations
@@ -22,7 +22,7 @@ FOLDER = ROOT / "data" / "snapshots" / "options"
 UNDERLYINGS = ("SPY", "QQQ")
 TARGET_DTE = (7, 30, 60)
 STRIKE_OFFSETS = (-0.05, 0.0, 0.05)
-MIN_VALID_SHARE = 0.6        # of contracts that must carry an implied volatility, else the day is not saved
+MIN_VALID_SHARE = 0.8        # of the at-the-money contracts that must carry an implied volatility, else the day is not saved
 ET = ZoneInfo("America/New_York")
 
 
@@ -99,23 +99,24 @@ def run(now: datetime, ib, folder: Path = FOLDER, say=print) -> int:  # pragma: 
         chain = next((c for c in ib.reqSecDefOptParams(name, "", "STK", stock.conId) if c.exchange == "SMART" and c.tradingClass == name), None)
         if chain is None:
             raise RuntimeError(f"no SMART option chain for {name}")
-        contracts = [Option(name, e, k, r, "SMART") for e in pick_expiries(chain.expirations, day)
-                     for k in pick_strikes(sorted(chain.strikes), spot) for r in ("C", "P")]
+        wanted = pick_strikes(sorted(chain.strikes), spot)
+        atm_strike = min(wanted, key=lambda k: abs(k - spot))
+        contracts = [Option(name, e, k, r, "SMART") for e in pick_expiries(chain.expirations, day) for k in wanted for r in ("C", "P")]
         contracts = [c for c in ib.qualifyContracts(*contracts) if c is not None and c.conId]   # unlisted strikes come back as None
         tickers = [ib.reqMktData(c, "106", False, False) for c in contracts]
         ib.sleep(8)
         records = []
         for c, t in zip(contracts, tickers):
             g = t.modelGreeks
-            records.append({"expiry": c.lastTradeDateOrContractMonth, "strike": c.strike, "right": c.right,
-                            "iv": good(g.impliedVol) if g else None, "delta": float(g.delta) if g and g.delta is not None and math.isfinite(g.delta) else None,
+            records.append({"expiry": c.lastTradeDateOrContractMonth, "strike": c.strike, "right": c.right, "atm": c.strike == atm_strike,
+                            "iv": good(t.impliedVolatility) or (good(g.impliedVol) if g else None), "delta": float(g.delta) if g and g.delta is not None and math.isfinite(g.delta) else None,
                             "last": good(t.last), "close": good(t.close), "bid": good(t.bid), "ask": good(t.ask)})
             ib.cancelMktData(c)
-        share = valid_share(records)
+        share = valid_share([r for r in records if r["atm"]])
         if share < MIN_VALID_SHARE:
-            raise RuntimeError(f"{name}: only {share:.0%} of {len(records)} option contracts carried an implied volatility")
+            raise RuntimeError(f"{name}: only {share:.0%} of the at-the-money contracts carried an implied volatility")
         out[name] = {"spot": spot, "rv20": realized_vol(bars.close), "contracts": records}
-        say(f"{name}: spot {spot}, rv20 {out[name]['rv20']:.3f}, {len(records)} contracts, {share:.0%} with implied vol")
+        say(f"{name}: spot {spot}, rv20 {out[name]['rv20']:.3f}, {len(records)} contracts, {share:.0%} of at-the-money with implied vol, {valid_share(records):.0%} overall")
     folder.mkdir(parents=True, exist_ok=True)
     partial = target.with_suffix(".partial")
     partial.write_text(json.dumps({"date": day.isoformat(), "taken_at_et": now.astimezone(ET).isoformat(), "data": out}), encoding="utf-8")
