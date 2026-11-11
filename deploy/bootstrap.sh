@@ -21,8 +21,8 @@ python3 -m venv .venv
 .venv/bin/pip install --upgrade pip
 .venv/bin/pip install -r requirements.txt
 
-git config user.name  "tempo-vps"
-git config user.email "tempo-vps@localhost"
+git config user.name  "tempo-bot"
+git config user.email "tempo-bot@users.noreply.github.com"
 
 echo
 echo "Next (docs/vps.md): copy .env, deploy/gateway.env, journal/, state.json and data/ from the PC,"
