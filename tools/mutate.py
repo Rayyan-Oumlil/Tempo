@@ -29,6 +29,8 @@ EQUIVALENT = {
 def run_one(name: str) -> tuple[int, list[str]]:
     result = subprocess.run([sys.executable, str(MUTATIONS / f"{name}.py")], capture_output=True, text=True, timeout=1800)
     survivors = []
+    if result.returncode != 0 or "unmutated copy:" not in result.stdout:
+        survivors.append(f"MUTATION SCRIPT CRASHED (exit {result.returncode}): {(result.stderr or result.stdout).strip()[-200:]}")
     for line in result.stdout.splitlines():
         label, _, outcome = line.partition(" -> ")
         label = label.strip()

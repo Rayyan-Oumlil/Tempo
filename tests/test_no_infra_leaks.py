@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TEXT = {".py", ".md", ".sh", ".json", ".yml", ".yaml", ".txt", ".ps1", ".toml", ".ini", ".example", ".cfg", ".env"}
-SKIP = ("ledger/ledger.jsonl", "evidence/universe_", "goldens/")
+SKIP = ("ledger/ledger.jsonl", "evidence/universe_", "goldens/", "tests/test_no_infra_leaks.py")
 IPV4 = re.compile(r"(?<![\w.])(\d{1,3}(?:\.\d{1,3}){3})(?![\w.])")
 SECRET_LINE = re.compile(r"^\s*(TWS_PASSWORD|VNC_SERVER_PASSWORD|TEMPO_SMTP_PASSWORD|SEC_USER_AGENT)\s*=[ \t]*[^\s#]+", re.M)
 
