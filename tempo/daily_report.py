@@ -23,7 +23,7 @@ HEARTBEAT_MAX_AGE_MIN = 30
 BACKUP_MAX_AGE_H = 30
 DISK_MIN_FREE_SHARE = 0.10
 # (folder under data/snapshots, trading days only?, max age in days)
-COLLECTORS: tuple[tuple[str, bool, int], ...] = (("finra_short_volume", True, 4), ("fred", False, 4))
+COLLECTORS: tuple[tuple[str, bool, int], ...] = (("finra_short_volume", True, 4), ("fred", False, 4), ("options", True, 4))
 
 
 @dataclass(frozen=True)
