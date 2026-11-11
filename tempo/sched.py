@@ -31,7 +31,6 @@ ALERTS_FILE = ROOT / "logs" / "sched_alerts.json"
 JOBS = ("morning", "entries", "exits", "evening")
 PULL_DAYS = 3          # the morning pull covers this many trading days, so a missed morning heals itself
 STEP_TIMEOUT_S = 900
-POPUP_SECONDS = 7200
 
 
 @dataclass(frozen=True)
@@ -91,12 +90,9 @@ def _run(step: Step) -> tuple[int, str]:
 
 
 def _notify(title: str, text: str) -> None:
-    """A popup on this PC that stays until you close it (Windows msg.exe). Never raises: the log is the fallback."""
-    try:
-        subprocess.run(["msg", os.environ.get("USERNAME", "*"), f"/TIME:{POPUP_SECONDS}", f"{title}\n\n{text}"[:900]],
-                       capture_output=True, timeout=30, check=False)
-    except (OSError, subprocess.SubprocessError):
-        pass
+    """Email (if TEMPO_SMTP_* is set in .env) and a popup on Windows. Never raises; an undelivered email is logged."""
+    from tempo.notify import notify
+    notify(title, text, log=_log)
 
 
 def _log(line: str) -> None:
