@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BACKUP_DIR = ROOT / "backups"
 INCLUDE = ("journal", "state.json", "ledger", "evidence", "data", "logs")
 EXCLUDE_SUFFIXES = (".lock",)
+EXCLUDE_DIRS = ("data/insider_sets",)   # 116 MB of SEC zips that a rebuild downloads again
 KEEP = 14
 
 
@@ -27,7 +28,7 @@ class BackupError(RuntimeError):
 
 
 def _skip(info: tarfile.TarInfo) -> tarfile.TarInfo | None:
-    return None if info.name.endswith(EXCLUDE_SUFFIXES) else info
+    return None if info.name.endswith(EXCLUDE_SUFFIXES) or info.name.startswith(EXCLUDE_DIRS) else info
 
 
 def sha256(path: Path) -> str:
