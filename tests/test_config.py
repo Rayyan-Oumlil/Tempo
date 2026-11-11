@@ -28,3 +28,9 @@ def test_paper_accounts_pass(account):
 def test_live_accounts_refused(account):
     with pytest.raises(RuntimeError, match="not a paper account"):
         assert_paper(account)
+
+
+def test_account_pin_is_read_and_blank_means_unset():
+    assert load_config({"IBKR_ACCOUNT": " DU1234567 "}).account == "DU1234567"
+    assert load_config({"IBKR_ACCOUNT": ""}).account is None
+    assert load_config({}).account is None

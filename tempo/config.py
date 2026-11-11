@@ -13,6 +13,7 @@ class IbkrConfig:
     client_id: int
     readonly: bool
     timeout: float
+    account: str | None = None  # IBKR_ACCOUNT: the one account Tempo may use; required once orders are enabled
 
 
 def load_config(env: Mapping[str, str] | None = None) -> IbkrConfig:
@@ -24,6 +25,7 @@ def load_config(env: Mapping[str, str] | None = None) -> IbkrConfig:
             client_id=int(env.get("IBKR_CLIENT_ID", "21")),
             readonly=env.get("IBKR_READONLY", "1") == "1",
             timeout=float(env.get("IBKR_TIMEOUT", "20")),
+            account=env.get("IBKR_ACCOUNT", "").strip() or None,
         )
     except ValueError as exc:
         raise ValueError(f"Invalid IBKR_* setting in environment: {exc}") from exc
