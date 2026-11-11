@@ -10,6 +10,22 @@ Paper account only. Commands run from the repo root with the virtual environment
 | `tempo.ledger_score`, `tempo.data`, `tempo.health` | yes (read-only is enough) | no |
 | `tempo.paper_run preflight\|entries\|exits`, `lifecycle`, `bracket`, `kill`, `flatten` | yes; orders need Read-Only API unticked and `IBKR_READONLY=0` | no |
 
+## Automatic routine (since 2026-11-10)
+The steps below now run by themselves: `tempo.sched` (Windows Task Scheduler via `tools/sched/register.ps1`, or cron on the
+VPS via `deploy/crontab`, same ET times). Your only daily job: keep IB Gateway logged into the paper account `IBKR_ACCOUNT`
+(on the VPS, IBC does it; see docs/vps.md). Read `logs/sched.log`; failures arrive by email (`TEMPO_SMTP_*`) and popup.
+
+| ET | Job | Does |
+|---|---|---|
+| 06:30 | morning | `tempo.insider` for the last 3 trading days: insider_cluster_v1 and insider_opportunistic_v1 |
+| 09:40 to 13:30, final 15:00 | entries | paper entries if any are due (fails closed if the P&L is unreadable; reruns are safe) |
+| 15:46, 15:50, final 15:55 | exits | paper exits if any are due |
+| 16:35, 18:00 | evening | `tempo.earnings_reaction` (only on the reaction day, after 16:20), `ledger_score`, `ledger`, commit and push the ledger |
+
+Ledger-only sources (not paper-traded): insider_opportunistic_v1, earnings_reaction_v1, claude_earnings_v1. The routine
+index for insider_opportunistic_v1 is `data/insider_routine.json`; rebuild it each January with
+`python -m tempo.insider_history build` (the morning job fails loudly if it does not cover the three previous years).
+
 ## A normal trading day
 1. **Morning, any time after about 06:00 ET:** `python -m tempo.insider <previous trading day>`. The SEC builds a day's index overnight. After any gap, give the missed days in order, oldest first: `python -m tempo.insider 2026-11-03 2026-11-04 2026-11-05` (signals are computed as of the last date).
 2. **Before the open:** start IB Gateway on the paper account; untick Read-Only API (one-time setting). `python -m tempo.paper_run preflight` must show no `[FAIL]`.
