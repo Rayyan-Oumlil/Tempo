@@ -30,7 +30,12 @@ def test_vps_crontab_runs_the_same_jobs_at_the_same_times_as_the_pc():
 
 def test_every_cron_line_is_a_full_command_not_a_variable():
     lines = [ln for ln in (ROOT / "deploy/crontab").read_text(encoding="utf-8").splitlines() if ln and not ln.startswith("#")]
-    assert all(re.match(r"^\d+ \d+ \* \* 1-5 cd /opt/tempo && ", ln) for ln in lines), lines
+    assert all(re.match(r"^(\d+ \d+ \* \* 1-5|\*/10 \* \* \* \*) cd /opt/tempo && ", ln) for ln in lines), lines
+
+
+def test_the_watchdog_runs_every_ten_minutes_all_week():
+    text = (ROOT / "deploy/crontab").read_text(encoding="utf-8")
+    assert "*/10 * * * * cd /opt/tempo && .venv/bin/python -m tempo.watchdog >> logs/watchdog.log 2>&1" in text
 
 
 def test_gateway_image_is_pinned_and_ports_are_localhost_only():
