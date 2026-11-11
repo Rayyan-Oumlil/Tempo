@@ -1,0 +1,36 @@
+{
+ "_note": "Pre-registered 2026-11-11 (04:30 ET), BEFORE the collector for this source was built and before any signal of this source was recorded or any return was seen. Do not edit to fit a result. To change a rule, add a dated entry to docs/research/log.md saying why, then edit.",
+ "purpose": "Fast feedback (5-day primary horizon) from a free, structured event: analyst rating changes. Evidence for, from memory and NOT re-read on 2026-11-11: prices drift after recommendation changes, more after downgrades (Womack 1996). Evidence against, also from memory: the drift has shrunk since, and much of the move happens on the announcement day, which this rule deliberately does not trade (entry is the next session's open).",
+ "source_name": "analyst_actions_v1",
+ "data": "IBKR's free Briefing.com Analyst Actions news provider (BRFUPDN), per stock with reqHistoricalNews (empty start/end, newest 50, filtered by time ourselves: the API's window is broken, see docs/ibkr-gotchas.md). Format checked 2026-11-11 on 15 large caps, e.g. '!Barclays upgraded Tesla (TSLA) to Overweight with target $450'. Headline times are treated as UTC (actions cluster at 10:30-13:00 UTC, i.e. before the US open).",
+ "universe": "evidence/universe_sp500_20261111.txt (501 symbols)",
+ "event_rule": "A BRFUPDN headline matching '<firm> upgraded|downgraded <company> (<SYMBOL>) to <rating>[ with target $<x>]' where SYMBOL is in the universe, timed after 16:00 ET on the previous trading day and at or before 16:00 ET on the signal day. Initiations, reiterations, resumptions and target-only changes do not count. If a symbol has both an upgrade and a downgrade in the window, no signal.",
+ "signal_rule": "Upgrade gives a long signal (+1); downgrade gives a short signal (-1). Liquidity filter: At the close of the signal day: close at least 5.00 USD and 20-day average dollar volume over the 20 trading days before it at least 5,000,000 USD (IBKR daily TRADES bars). Failures and missing bars are counted and reported.",
+ "emission": "Recorded by the evening job of the signal day, after 16:20 ET; event_id is the signal day (YYYYMMDD); price is the signal-day close. One signal per symbol per day. A missed evening is lost, never recorded late.",
+ "timing": "Entry is the open of the first trading day strictly after the ledger date (so the announcement day is not traded).",
+ "cost_assumption": "round_trip_cost 0.002 (20 bps), liquid large caps at a ~2,000 USD position.",
+ "ledger": "horizons 1, 5 and 21 trading days against SPY; primary horizon 5",
+ "multiplicity": "Six ledger sources now run at once (insider_cluster_v1, claude_earnings_v1, insider_opportunistic_v1, earnings_reaction_v1, analyst_actions_v1, weekly_reversal_v1). This source needs t above 2.7 (about a one-sided 5% test split six ways, Bonferroni). Earlier sources keep their registered thresholds; read any pass with six in mind.",
+ "full_test": {
+  "minimum_scored_signals_at_primary_horizon": 100,
+  "pass_all_of": [
+   "mean net excess return at 5 days (direction-adjusted) above 0.3% after the 20 bps cost",
+   "t-statistic of the 5-day net excess returns above 2.7",
+   "hit rate at 5 days above 51%",
+   "positive mean net excess in BOTH chronological halves of the scored signals",
+   "fewer than 10% of signals unscorable 30 trading days after their horizon"
+  ],
+  "reported_not_criteria": [
+   "1 and 21 day results",
+   "upgrades and downgrades separately",
+   "headlines that timed out or did not parse (counts)"
+  ]
+ },
+ "known_limits": [
+  "Only the newest 50 BRFUPDN headlines per symbol are read each evening; more than 50 actions on one stock in a day would be cut (has not been seen).",
+  "Some reqHistoricalNews requests time out; the symbols affected that evening are counted and reported, not retried late.",
+  "Short signals assume the stock can be borrowed."
+ ],
+ "if_fail": "Report it as a failure and stop spending effort on analyst actions.",
+ "if_pass": "Not proof and not real money: a second independent period, a realistic-size execution check, then evidence/gate.json."
+}

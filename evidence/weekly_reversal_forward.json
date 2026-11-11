@@ -1,0 +1,36 @@
+{
+ "_note": "Pre-registered 2026-11-11 (04:30 ET), BEFORE the collector for this source was built and before any signal of this source was recorded or any return was seen. Do not edit to fit a result. To change a rule, add a dated entry to docs/research/log.md saying why, then edit.",
+ "purpose": "Fast, high-volume feedback from the oldest anomaly that still needs only daily prices: short-term reversal (last week's biggest losers bounce, winners give back). Evidence for, from memory and NOT re-read: Lehmann 1990, Jegadeesh 1990; stronger when volatility is high (Nagel 2012). Evidence against: it is weak in large caps after costs, which is exactly what this tests at a realistic size.",
+ "source_name": "weekly_reversal_v1",
+ "data": "IBKR daily TRADES bars (regular hours) for the universe and SPY.",
+ "universe": "evidence/universe_sp500_20261111.txt (501 symbols)",
+ "event_rule": "On the last trading day of each calendar week, after the close: for each universe symbol passing the liquidity filter, R5 = close(today) / close(5 trading days earlier) - 1, minus SPY's return over the same closes. Liquidity filter: At the close of the signal day: close at least 5.00 USD and 20-day average dollar volume over the 20 trading days before it at least 5,000,000 USD (IBKR daily TRADES bars). Failures and missing bars are counted and reported.",
+ "signal_rule": "The 10 symbols with the lowest R5 get long signals (+1); the 10 with the highest R5 get short signals (-1). Ties are broken by symbol order. Fewer than 40 scorable symbols that evening: no signals, reported.",
+ "emission": "Recorded by the evening job of that day, after 16:20 ET; event_id is that day (YYYYMMDD); price is the close. A missed evening is lost, never recorded late.",
+ "timing": "Entry is the open of the first trading day strictly after the ledger date.",
+ "cost_assumption": "round_trip_cost 0.002 (20 bps).",
+ "ledger": "horizons 1, 5 and 21 trading days against SPY; primary horizon 5",
+ "multiplicity": "Six ledger sources now run at once (insider_cluster_v1, claude_earnings_v1, insider_opportunistic_v1, earnings_reaction_v1, analyst_actions_v1, weekly_reversal_v1). This source needs t above 2.7 (about a one-sided 5% test split six ways, Bonferroni). Earlier sources keep their registered thresholds; read any pass with six in mind.",
+ "full_test": {
+  "minimum_scored_signals_at_primary_horizon": 100,
+  "pass_all_of": [
+   "mean net excess return at 5 days (direction-adjusted) above 0.3% after the 20 bps cost",
+   "t-statistic of the 5-day net excess returns above 2.7",
+   "hit rate at 5 days above 51%",
+   "positive mean net excess in BOTH chronological halves of the scored signals",
+   "fewer than 10% of signals unscorable 30 trading days after their horizon"
+  ],
+  "reported_not_criteria": [
+   "1 and 21 day results",
+   "longs and shorts separately",
+   "weeks with VIX above vs below its trailing 1-year median"
+  ]
+ },
+ "known_limits": [
+  "20 signals a week are correlated within a week (same market moves), so the t-statistic overstates the evidence; the week-level mean is reported alongside.",
+  "The universe is today's S&P 500, so stocks that later leave the index are still traded: fine for a forward test.",
+  "Short signals assume the stock can be borrowed."
+ ],
+ "if_fail": "Report it as a failure and stop spending effort on short-term reversal.",
+ "if_pass": "Not proof and not real money: a second independent period, a realistic-size execution check, then evidence/gate.json."
+}
