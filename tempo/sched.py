@@ -103,8 +103,18 @@ def _log(line: str) -> None:
         f.write(f"{stamp} {line}\n")
 
 
+NOISE = ("reqHistoricalNewsAsync: Timeout", "Error 200, reqId", "Unknown contract:")   # known, repetitive IBKR chatter
+
+
 def _tail(text: str, lines: int = 6) -> str:
-    return "\n".join(text.strip().splitlines()[-lines:])
+    """Last lines of a step's output. Known repetitive IBKR chatter is counted in one line, so it cannot push the
+    step's own summary out of the log; every other line is kept."""
+    all_lines = text.strip().splitlines()
+    kept = [ln for ln in all_lines if not ln.startswith(NOISE)]
+    tail = kept[-lines:]
+    if len(all_lines) != len(kept):
+        tail.append(f"({len(all_lines) - len(kept)} repetitive IBKR notices folded: timeouts / unknown contracts)")
+    return "\n".join(tail)
 
 
 def _first_failure_today(path: Path, job: str, today: date) -> bool:

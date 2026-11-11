@@ -215,3 +215,8 @@ def test_the_10b5_1_flag_written_as_true_is_ignored_too():
     assert parse_form4(form4(aff="true"), "2026-11-02", "A1") == []
     assert parse_form4(form4(aff="TRUE"), "2026-11-02", "A1") == []
     assert parse_form4(form4(aff="false"), "2026-11-02", "A1") != []
+
+
+def test_placeholder_tickers_are_not_symbols():
+    from tempo.insider import PLACEHOLDER_SYMBOLS, SYMBOL
+    assert "NONE" in PLACEHOLDER_SYMBOLS and SYMBOL.match("NONE")   # the regex alone lets it through; the set stops it
