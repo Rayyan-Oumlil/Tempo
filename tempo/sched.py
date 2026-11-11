@@ -28,7 +28,7 @@ from tempo.paper_run import PAPER_FILE, due_actions, entries_allowed, exits_allo
 ROOT = Path(__file__).resolve().parent.parent
 LOG_FILE = ROOT / "logs" / "sched.log"
 ALERTS_FILE = ROOT / "logs" / "sched_alerts.json"
-JOBS = ("morning", "entries", "exits", "evening")
+JOBS = ("morning", "entries", "exits", "evening", "late")
 PULL_DAYS = 3          # the morning pull covers this many trading days, so a missed morning heals itself
 STEP_TIMEOUT_S = 900
 
@@ -62,6 +62,8 @@ def steps_for(job: str, today: date) -> list[Step]:
     if job == "evening":
         return [Step((py, "-m", "tempo.earnings_reaction")), Step((py, "-m", "tempo.analyst_actions")),
                 Step((py, "-m", "tempo.weekly_reversal")), Step((py, "-m", "tempo.ledger_score")), Step((py, "-m", "tempo.ledger"))]
+    if job == "late":   # after FINRA publishes (about 18:00 ET): free data first, then the signals that read it
+        return [Step((py, "-m", "tempo.snapshots")), Step((py, "-m", "tempo.short_volume")), Step((py, "-m", "tempo.ledger_score"))]
     raise ValueError(f"unknown job {job!r}; expected one of {JOBS}")
 
 
@@ -71,7 +73,7 @@ def is_due(job: str, now: datetime, ledger: Ledger, paper: Journal) -> bool:
     today = now.astimezone(EASTERN).date()
     if not is_trading_day(today):
         return False
-    if job in ("morning", "evening"):
+    if job in ("morning", "evening", "late"):
         return True
     actions = due_actions(ledger.signals(), load_state(paper), today)
     if job == "entries":
@@ -160,7 +162,7 @@ def run_job(job: str, *, now: datetime, final: bool = False, ledger: Ledger | No
             return 0
         outputs: list[str] = []
         failures: list[str] = []
-        keep_going = job == "evening"   # the evening steps are independent: one failing must not stop scoring or the commit
+        keep_going = job in ("evening", "late")   # the evening steps are independent: one failing must not stop scoring or the commit
         for step in steps_for(job, today):
             rc, out = run(step)
             log(f"{job}: {' '.join(step.argv[-3:])} -> rc {rc}\n{_tail(out, 12)}")
@@ -169,7 +171,7 @@ def run_job(job: str, *, now: datetime, final: bool = False, ledger: Ledger | No
                 if not keep_going:
                     return fail(failures[0])
             outputs.append(out)
-        if job == "evening":
+        if job in ("evening", "late"):
             rc, out = _commit_ledger(run, today)
             log(f"{job}: git -> rc {rc}: {_tail(out, 3)}")
             if rc:

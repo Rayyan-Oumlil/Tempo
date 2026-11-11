@@ -14,8 +14,10 @@
 55 15 * * 1-5 cd /opt/tempo && .venv/bin/python -m tempo.sched exits --final
 35 16 * * 1-5 cd /opt/tempo && .venv/bin/python -m tempo.sched evening
 0 18 * * 1-5 cd /opt/tempo && .venv/bin/python -m tempo.sched evening
+15 19 * * 1-5 cd /opt/tempo && .venv/bin/python -m tempo.sched late
+30 20 * * 1-5 cd /opt/tempo && .venv/bin/python -m tempo.sched late
 # Gateway watchdog: every 10 minutes, all week (the nightly IBC restart window is ignored by the code).
 */10 * * * * cd /opt/tempo && .venv/bin/python -m tempo.watchdog >> logs/watchdog.log 2>&1
 # Nightly verified backup (journals, state, ledger, data), then the daily all-good email. Every day, weekends too.
 0 21 * * * cd /opt/tempo && .venv/bin/python -m tempo.backup >> logs/backup.log 2>&1
-45 18 * * * cd /opt/tempo && .venv/bin/python -m tempo.daily_report >> logs/daily_report.log 2>&1
+30 21 * * * cd /opt/tempo && .venv/bin/python -m tempo.daily_report >> logs/daily_report.log 2>&1

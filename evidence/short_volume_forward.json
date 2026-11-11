@@ -1,0 +1,37 @@
+{
+ "_note": "Pre-registered 2026-11-11 (evening), BEFORE the collector for this source was built and before any signal of this source was recorded or any return was seen. Do not edit to fit a result. To change a rule, add a dated entry to docs/research/log.md saying why, then edit.",
+ "purpose": "Does unusual daily short selling predict the next days' returns? Evidence for, from memory and NOT re-read: Boehmer, Jones and Zhang (2008) and Diether, Lee and Werner (2009) found that heavily shorted days precede underperformance, and that short sellers trade on information. Evidence against: the daily file also contains market-maker hedging and arbitrage shorting, the effect is said to be concentrated in small caps and to have decayed, and nobody has verified it on a forward, post-2020 S&P 500 sample at a realistic cost.",
+ "source_name": "short_volume_v1",
+ "data": "FINRA Reg SHO consolidated daily short volume (cdn.finra.org/equity/regsho/daily/CNMSshvolYYYYMMDD.txt), saved by tempo.snapshots; IBKR daily TRADES bars for the liquidity filter.",
+ "universe": "evidence/universe_sp500_20261111.txt (501 symbols)",
+ "event_rule": "After the FINRA file for a trading day D is published (the late job runs from 19:15 ET): for each universe symbol, ratio = ShortVolume / TotalVolume on D. Baseline = the mean and standard deviation of that symbol's ratio over the 20 trading days before D (at least 15 of them must have files; standard deviation floored at 0.02). z = (ratio - mean) / sd. Symbols with TotalVolume on D under 100,000 shares are skipped.",
+ "signal_rule": "The 10 symbols with the HIGHEST z (unusually heavy short selling) get short signals (-1); the 10 with the LOWEST z (unusually light) get long signals (+1). Candidates are taken in z order, 30 per side, and kept only if they pass the liquidity filter (close at least 5.00 USD, 20-day average dollar volume at least 5,000,000 USD, IBKR daily bars) until 10 per side are found. Fewer than 100 symbols with a usable z that day: no signals, reported.",
+ "emission": "Recorded by the late job on D after the file is out; event_id is D (YYYYMMDD); price is the close of D. A day whose file never appears is lost, never recorded late.",
+ "timing": "Entry is the open of the first trading day strictly after the ledger date.",
+ "cost_assumption": "round_trip_cost 0.002 (20 bps).",
+ "ledger": "horizons 1, 5 and 21 trading days against SPY; primary horizon 5",
+ "multiplicity": "Eight ledger sources will run at once (insider_cluster_v1, claude_earnings_v1, insider_opportunistic_v1, earnings_reaction_v1, analyst_actions_v1, weekly_reversal_v1, this one, and the options-volatility shadow). This source needs t above 2.8 (a one-sided 5% test split eight ways, Bonferroni). Read any pass with eight in mind.",
+ "full_test": {
+  "minimum_scored_signal_days_at_primary_horizon": 120,
+  "pass_all_of": [
+   "mean net excess return at 5 days (direction-adjusted) above 0.3% after the 20 bps cost",
+   "t-statistic of the 5-day net excess returns above 2.8, computed on DAILY means (one number per signal day), not on the 20 correlated signals of a day",
+   "hit rate at 5 days above 51%",
+   "positive mean net excess in BOTH chronological halves of the scored signals",
+   "fewer than 10% of signals unscorable 30 trading days after their horizon"
+  ],
+  "reported_not_criteria": [
+   "1 and 21 day results",
+   "longs and shorts separately (the literature says the high-short side carries the effect)",
+   "by market-cap tercile and by VIX above or below its trailing 1-year median"
+  ]
+ },
+ "known_limits": [
+  "20 signals a day are strongly correlated (same market moves), so the pass test uses daily means; a verdict needs at least 120 scored signal days (about 6 months of trading days after the first 5-day scores).",
+  "Short volume is not short interest: it counts shorts executed that day, including market makers hedging customer flow.",
+  "Short signals assume the stock can be borrowed; heavily shorted names can be hard to borrow.",
+  "The universe is today's S&P 500, so stocks that later leave the index are still traded: fine for a forward test."
+ ],
+ "if_fail": "Report it as a failure and stop spending effort on daily short volume.",
+ "if_pass": "Not proof and not real money: a second independent period, a realistic-size execution check, then evidence/gate.json."
+}

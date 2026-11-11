@@ -23,7 +23,7 @@ HEARTBEAT_MAX_AGE_MIN = 30
 BACKUP_MAX_AGE_H = 30
 DISK_MIN_FREE_SHARE = 0.10
 # (folder under data/snapshots, trading days only?, max age in days)
-COLLECTORS: tuple[tuple[str, bool, int], ...] = ()
+COLLECTORS: tuple[tuple[str, bool, int], ...] = (("finra_short_volume", True, 4), ("fred", False, 4))
 
 
 @dataclass(frozen=True)
@@ -47,8 +47,9 @@ def build(f: Facts) -> tuple[str, str]:
         problems.append("Gateway API is not answering right now")
     failed = [ln for ln in f.sched_lines_today if "FAILED" in ln or re.search(r"-> rc [1-9]", ln)]
     problems += [f"job problem today: {ln[:160]}" for ln in failed]
-    if f.trading_day and not any("evening: git -> rc 0" in ln for ln in f.sched_lines_today):
-        problems.append("the evening job did not finish and push the ledger today")
+    for job in ("evening", "late"):
+        if f.trading_day and not any(f"{job}: git -> rc 0" in ln for ln in f.sched_lines_today):
+            problems.append(f"the {job} job did not finish and push the ledger today")
     if f.backup_age_h is None or f.backup_age_h > BACKUP_MAX_AGE_H:
         problems.append("no backup newer than 30 hours")
     if f.disk_free_share < DISK_MIN_FREE_SHARE:
