@@ -1,0 +1,16 @@
+# Tempo daily routine on the VPS. The server clock is set to America/New_York by bootstrap.sh, so these are ET.
+# Same times as tools/sched/register.ps1 (tests/test_deploy.py checks they match). Every job is idempotent.
+# Commands are written out in full: cron does not parse '&&' inside a variable.
+30 6 * * 1-5 cd /opt/tempo && .venv/bin/python -m tempo.sched morning
+40 9 * * 1-5 cd /opt/tempo && .venv/bin/python -m tempo.sched entries
+55 9 * * 1-5 cd /opt/tempo && .venv/bin/python -m tempo.sched entries
+20 10 * * 1-5 cd /opt/tempo && .venv/bin/python -m tempo.sched entries
+0 11 * * 1-5 cd /opt/tempo && .venv/bin/python -m tempo.sched entries
+0 12 * * 1-5 cd /opt/tempo && .venv/bin/python -m tempo.sched entries
+30 13 * * 1-5 cd /opt/tempo && .venv/bin/python -m tempo.sched entries
+0 15 * * 1-5 cd /opt/tempo && .venv/bin/python -m tempo.sched entries --final
+46 15 * * 1-5 cd /opt/tempo && .venv/bin/python -m tempo.sched exits
+50 15 * * 1-5 cd /opt/tempo && .venv/bin/python -m tempo.sched exits
+55 15 * * 1-5 cd /opt/tempo && .venv/bin/python -m tempo.sched exits --final
+35 16 * * 1-5 cd /opt/tempo && .venv/bin/python -m tempo.sched evening
+0 18 * * 1-5 cd /opt/tempo && .venv/bin/python -m tempo.sched evening

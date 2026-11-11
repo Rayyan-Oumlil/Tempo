@@ -1,0 +1,22 @@
+# IB Gateway, headless, logged in by IBC (inside the image). Paper account only.
+# Pinned to a release at least two weeks old (10.50.1f, 2026-10-06). Ports bind to localhost only: nothing on the
+# internet can reach the API; use an SSH tunnel for VNC (port 5900) if a dialog ever needs a human.
+name: tempo
+services:
+  ib-gateway:
+    image: gnzsnz/ib-gateway:10.50.1f
+    restart: always
+    env_file: gateway.env           # TWS_USERID, TWS_PASSWORD, VNC_SERVER_PASSWORD (never committed)
+    environment:
+      TRADING_MODE: paper
+      READ_ONLY_API: "no"           # Tempo places paper orders; the account pin (IBKR_ACCOUNT) guards which account
+      TIME_ZONE: America/New_York
+      TZ: America/New_York
+      AUTO_RESTART_TIME: "11:59 PM" # daily restart without a new 2FA (IBC); a full login is still needed once a week
+      TWOFA_TIMEOUT_ACTION: restart
+      RELOGIN_AFTER_TWOFA_TIMEOUT: "yes"
+      EXISTING_SESSION_DETECTED_ACTION: primary
+      JAVA_HEAP_SIZE: "1024"
+    ports:
+      - "127.0.0.1:4002:4004"       # paper API, as on the PC
+      - "127.0.0.1:5900:5900"       # VNC, through an SSH tunnel only
