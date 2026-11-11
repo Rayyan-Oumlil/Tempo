@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import smtplib
+import ssl
 import subprocess
 from email.message import EmailMessage
 from pathlib import Path
@@ -31,7 +32,8 @@ def send_email(title: str, text: str, env: Mapping[str, str] | None = None, smtp
     msg["From"], msg["To"], msg["Subject"] = user, env.get("TEMPO_ALERT_TO") or user, title
     msg.set_content(text)
     try:
-        with smtp(env.get("TEMPO_SMTP_HOST", "smtp.gmail.com"), int(env.get("TEMPO_SMTP_PORT", "465")), timeout=30) as server:
+        with smtp(env.get("TEMPO_SMTP_HOST", "smtp.gmail.com"), int(env.get("TEMPO_SMTP_PORT", "465")), timeout=30,
+                  context=ssl.create_default_context()) as server:   # verify the server certificate (not the default on 3.11)
             server.login(user, password)
             server.send_message(msg)
         return True

@@ -5,9 +5,11 @@ ENV = {"TEMPO_SMTP_USER": "me@example.com", "TEMPO_SMTP_PASSWORD": "app-pass", "
 
 class FakeSMTP:
     sent = []
+    contexts = []
 
-    def __init__(self, host, port, timeout):
-        self.host, self.port = host, port
+    def __init__(self, host, port, timeout, context=None):
+        self.host, self.port, self.context = host, port, context
+        FakeSMTP.contexts.append(context)
 
     def __enter__(self):
         return self
@@ -49,3 +51,12 @@ def test_notify_tries_email_and_popup_and_logs_what_failed():
     logs.clear()
     notify("T", "body", email=lambda t, x: True, popup=lambda t, x: None, log=logs.append)
     assert logs == []
+
+
+def test_the_mail_server_certificate_is_verified():
+    """Security review 2026-11-11: smtplib.SMTP_SSL without a context does not verify the certificate on Python 3.11."""
+    import ssl
+    FakeSMTP.contexts = []
+    send_email("t", "x", env=ENV, smtp=FakeSMTP)
+    ctx = FakeSMTP.contexts[0]
+    assert isinstance(ctx, ssl.SSLContext) and ctx.verify_mode == ssl.CERT_REQUIRED and ctx.check_hostname
