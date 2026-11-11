@@ -31,3 +31,4 @@ Add-Job "Tempo-Entries-Final" "entries" @("15:00") "--final"
 Add-Job "Tempo-Exits"         "exits"   @("15:46", "15:50")
 Add-Job "Tempo-Exits-Final"   "exits"   @("15:55") "--final"
 Add-Job "Tempo-Evening"       "evening" @("16:35", "18:00")
+Add-Job "Tempo-Late"          "late"    @("19:15", "20:30")

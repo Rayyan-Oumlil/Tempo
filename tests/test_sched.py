@@ -190,3 +190,20 @@ def test_ibkr_chatter_is_folded_so_the_real_summary_survives_the_tail():
     out = "summary line\n" + "reqHistoricalNewsAsync: Timeout\n" * 20 + "Error 200, reqId 1: No security definition\n"
     tail = _tail(out, 12)
     assert "summary line" in tail and "21 repetitive IBKR notices folded" in tail and "Timeout" not in tail
+
+
+def test_the_late_job_collects_data_before_it_records_and_survives_one_failing_step(tmp_path):
+    steps = [s.argv[-1] for s in steps_for("late", ENTRY)]
+    assert steps == ["tempo.snapshots", "tempo.short_volume", "tempo.ledger_score"]
+    assert all(("IBKR_READONLY", "0") not in s.env for s in steps_for("late", ENTRY))
+    seen = []
+
+    def run(step):
+        seen.append(step.argv)
+        return (1, "FINRA down") if step.argv[-1] == "tempo.snapshots" else ((1, "") if step.argv[:3] == ("git", "diff", "--cached") else (0, "ok"))
+
+    rec = Rec()
+    rc = run_job("late", now=et(ENTRY, 19, 15), ledger=make_ledger(tmp_path), paper=Journal(tmp_path / "p.jsonl"), run=run,
+                 notify=rec.notify, log=rec.log, alerts_path=tmp_path / "a.json")
+    assert rc == 1 and any(a[-1] == "tempo.short_volume" for a in seen) and ("git", "push") in seen
+    assert rec.notes and "FINRA down" in rec.notes[0][1]
