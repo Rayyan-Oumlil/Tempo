@@ -6,7 +6,9 @@ WORK = Path(tempfile.mkdtemp(prefix="tempo-mutate-")) / "copy"
 M = [
     ("any transaction code counts", 'if _text(tx, "transactionCoding/transactionCode") != "P" or', 'if False or'),
     ("disposals count", '_text(tx, "transactionAmounts/transactionAcquiredDisposedCode/value") != "A":', 'False:'),
-    ("10b5-1 flag ignored", 'or _text(root, "aff10b5One") == "1":', ':'),
+    ("10b5-1 flag ignored", 'or _text(root, "aff10b5One").lower() in ("1", "true"):', ':'),
+    ("10b5-1 flag spelled true ignored", 'in ("1", "true"):  # both spellings occur', '== "1":'),
+    ("routine roles: ten-percent owners counted", 'for flag in ("isDirector", "isOfficer")', 'for flag in ("isDirector", "isOfficer", "isTenPercentOwner")'),
     ("window includes day 8", "if start < b[\"filing_date\"] <= asof.isoformat():", "if (asof - timedelta(days=window_days + 1)).isoformat() < b[\"filing_date\"] <= asof.isoformat():"),
     ("future filings included", "<= asof.isoformat():", "<= '9999-12-31':"),
     ("one insider is enough", "if len(owners) >= min_owners and", "if len(owners) >= 1 and"),
