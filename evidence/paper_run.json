@@ -7,6 +7,14 @@
     },
     "insider_cluster_v1": {
       "horizon_trading_days": 21
+    },
+    "analyst_actions_v1": {
+      "horizon_trading_days": 5,
+      "added": "2026-11-11, before any of its signals was entered"
+    },
+    "short_volume_v1": {
+      "horizon_trading_days": 5,
+      "added": "2026-11-11, before any of its signals was entered"
     }
   },
   "which_signals": "Every signal of those two sources in the ledger (backfill ones excluded), with no selection. A signal is skipped only if the order door refuses it or the stock cannot be qualified or priced at IBKR; each skip and its reason is written to the paper journal and counted.",
@@ -23,5 +31,6 @@
     "commissions paid"
   ],
   "no_verdict_on_profit": "Paper P&L is not an input to any strategy verdict. Verdicts come only from the ledger criteria in evidence/llm_earnings_forward.json and evidence/insider_forward.json.",
-  "safety": "Paper account only (Tempo refuses any other). The daily loss limit, kill switch and reduce-only mode apply because every order goes through tempo/orders.py. Runs only during regular hours."
+  "safety": "Paper account only (Tempo refuses any other). The daily loss limit, kill switch and reduce-only mode apply because every order goes through tempo/orders.py. Runs only during regular hours.",
+  "amendment_2026-11-11": "Two sources added so execution costs are measured sooner. Same rules, sizing and timing. Every signal of those sources is traded with no selection. Paper P&L still feeds no verdict."
 }

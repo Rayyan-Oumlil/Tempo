@@ -47,7 +47,7 @@ def test_position_size_is_a_fraction_of_equity_in_whole_shares():
 
 
 def test_only_the_registered_sources_and_horizons_are_traded():
-    assert HORIZONS == {"claude_earnings_v1": 5, "insider_cluster_v1": 21}
+    assert HORIZONS == {"claude_earnings_v1": 5, "insider_cluster_v1": 21, "analyst_actions_v1": 5, "short_volume_v1": 5}
 
 
 def test_entries_are_due_on_the_entry_day_and_not_before_or_after(tmp_path):
