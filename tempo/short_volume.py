@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import statistics
 import sys
+from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Mapping, Sequence
 from zoneinfo import ZoneInfo
@@ -29,6 +30,27 @@ CANDIDATES_PER_SIDE = 30
 N_EACH = 10
 ROUND_TRIP_COST = 0.002
 ET = ZoneInfo("America/New_York")
+
+
+@dataclass(frozen=True)
+class Variant:
+    """One version of the rule. The champion is the default; a challenger changes one thing and is registered first
+    (evidence/challengers/<source>.json, see tempo.champion)."""
+    source: str
+    n_each: int = N_EACH
+    min_abs_z: float = 0.0
+    sides: tuple[str, ...] = ("long", "short")
+
+
+VARIANTS: dict[str, Variant] = {SOURCE: Variant(SOURCE)}
+
+
+def select(z: Mapping[str, float], variant: Variant) -> tuple[list[str], list[str]]:
+    """Candidates per side for this variant: the champion's ordering, then the variant's own filters."""
+    longs, shorts = candidates(z)
+    longs = [s for s in longs if "long" in variant.sides and -z[s] >= variant.min_abs_z]
+    shorts = [s for s in shorts if "short" in variant.sides and z[s] >= variant.min_abs_z]
+    return longs, shorts
 
 
 def ratio(short_total: tuple[float, float]) -> float | None:
@@ -60,19 +82,19 @@ def candidates(z: Mapping[str, float], per_side: int = CANDIDATES_PER_SIDE) -> t
     return longs, shorts
 
 
-def record_signals(picks: list[tuple[str, int]], info: Mapping[str, dict], day: date, ledger: Ledger) -> list[dict]:
+def record_signals(picks: list[tuple[str, int]], info: Mapping[str, dict], day: date, ledger: Ledger, source: str = SOURCE) -> list[dict]:
     recorded = []
     for symbol, direction in picks:
         try:
             recorded.append(ledger.record_signal(
-                source=SOURCE, symbol=symbol, direction=direction, event_id=day.strftime("%Y%m%d"), price=info[symbol]["close"],
+                source=source, symbol=symbol, direction=direction, event_id=day.strftime("%Y%m%d"), price=info[symbol]["close"],
                 features={"round_trip_cost": ROUND_TRIP_COST, "z": round(info[symbol]["z"], 3)}))
         except SignalRefused:
             continue
     return recorded
 
 
-def run(now: datetime, ib, ledger: Ledger, say=print) -> int:  # pragma: no cover - glue, exercised live
+def run(now: datetime, ib, ledger: Ledger, variant: Variant = VARIANTS[SOURCE], say=print) -> int:  # pragma: no cover - glue, exercised live
     from tempo.earnings_reaction import ready_to_record
     day = now.astimezone(ET).date()
     if not is_trading_day(day):
@@ -88,14 +110,14 @@ def run(now: datetime, ib, ledger: Ledger, say=print) -> int:  # pragma: no cove
     past_days = [d for d in trading_days_back(day, BASELINE_DAYS + 1)[:-1]]
     history = [h for d in past_days if (h := load_short_volume(d)) is not None]
     z = zscores(today, history, load_universe(UNIVERSE))
-    longs, shorts = candidates(z)
+    longs, shorts = select(z, variant)
     counts = {"history_days": len(history), "usable_z": len(z), "no_bar": 0, "short_history": 0, "filtered": 0}
     info: dict[str, dict] = {}
 
     def take(side: list[str]) -> list[str]:
         kept: list[str] = []
         for symbol in side:
-            if len(kept) == N_EACH:
+            if len(kept) == variant.n_each:
                 break
             bars = day_bars(ib, symbol, "2 M")
             m = liquid(bars, day.isoformat()) if bars else {"status": "no_bar"}
@@ -107,8 +129,8 @@ def run(now: datetime, ib, ledger: Ledger, say=print) -> int:  # pragma: no cove
         return kept
 
     picks = [(s, 1) for s in take(longs)] + [(s, -1) for s in take(shorts)]
-    recorded = record_signals(picks, info, day, ledger)
-    say(f"short volume {day}: {counts}; new signals recorded: {len(recorded)}")
+    recorded = record_signals(picks, info, day, ledger, variant.source)
+    say(f"{variant.source} {day}: {counts}; new signals recorded: {len(recorded)}")
     for r in recorded:
         say(f"  {r['symbol']:<6} {'LONG ' if r['direction'] == 1 else 'SHORT'} z {r['features']['z']:+.2f}")
     if not z:
@@ -124,10 +146,15 @@ def main() -> int:  # pragma: no cover - entry point
     from tempo.ibkr import connect
 
     load_dotenv()
+    from tempo.champion import require_registered
+    for v in VARIANTS.values():
+        if v.source != SOURCE:
+            require_registered(v.source, datetime.now(ET).date())   # fail before connecting: no unregistered challenger records anything
     ib = connect(load_config())
     ib.RequestTimeout = 30
     try:
-        return run(datetime.now(ET), ib, Ledger())
+        codes = [run(datetime.now(ET), ib, Ledger(), v) for v in VARIANTS.values()]   # champion first, then challengers
+        return max(codes)
     finally:
         ib.disconnect()
 
