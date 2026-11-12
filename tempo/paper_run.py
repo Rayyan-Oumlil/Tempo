@@ -38,7 +38,7 @@ from tempo.ledger import Ledger
 from tempo.orders import OrderRefused, _check_entry, is_exit, place, record_outcome
 from tempo.state import STATE_FILE, get_mode
 
-HORIZONS = {"claude_earnings_v1": 5, "insider_cluster_v1": 21}
+HORIZONS = {"claude_earnings_v1": 5, "insider_cluster_v1": 21, "analyst_actions_v1": 5, "short_volume_v1": 5}   # amended 2026-11-11, see log.md
 NOTIONAL_PCT = 0.5
 ENTRY_DELAY_MINUTES = 5
 EXIT_LEAD_MINUTES = 15

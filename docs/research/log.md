@@ -373,3 +373,6 @@ Six new tests (30 in the file) and seven new mutations; the mutation tool also f
 - **Pre-registered before any code or signal:** `evidence/analyst_actions_forward.json` (Briefing.com upgrades/downgrades, free via IBKR, long/short, entry the session after the announcement) and `evidence/weekly_reversal_forward.json` (each week's 10 biggest market-adjusted losers long, 10 biggest winners short, S&P 500). Universe frozen in `evidence/universe_sp500_20261111.txt` (501 symbols).
 - **Multiplicity:** six ledger sources run at once; these two need t above 2.7. Earlier sources keep their registered thresholds.
 - **Feasibility measured:** 60 symbols took about 20 s for news and 20 s for daily bars, so the full universe costs about 6 minutes in the evening job; a few news requests time out (counted, not hidden).
+
+### 2026-11-11 (evening): paper runner now also trades analyst_actions_v1 and short_volume_v1
+- **Why:** to measure real execution cost and fill quality on the fastest-feedback sources (5-day horizon). Same sizing (0.5% of equity per signal) and timing as the other sources; no selection. Done before any of their signals was entered; ledger criteria untouched. Paper P&L still feeds no verdict.
