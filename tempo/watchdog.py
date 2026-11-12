@@ -88,7 +88,8 @@ def restart_gateway() -> int:  # pragma: no cover - needs docker
 
 
 def run_once(*, now: datetime, check: Callable[[], tuple[bool, str]], restart: Callable[[], int], notify: Callable[[str, str], None],
-             state_path: Path = STATE_FILE, heartbeat_path: Path = HEARTBEAT_FILE, log: Callable[[str], None] = print) -> State:
+             state_path: Path = STATE_FILE, heartbeat_path: Path = HEARTBEAT_FILE, log: Callable[[str], None] = print,
+             ping: Callable[[bool], None] = lambda ok: None) -> State:
     ok, detail = check()
     state, actions = step(load_state(state_path), ok, now)
     stamp = now.astimezone(ET).strftime("%Y-%m-%d %H:%M ET")
@@ -107,12 +108,36 @@ def run_once(*, now: datetime, check: Callable[[], tuple[bool, str]], restart: C
             notify("Tempo watchdog: Gateway recovered", f"{stamp}: the IBKR API answers again.")
     _write(state_path, asdict(state))
     _write(heartbeat_path, {"ts": now.timestamp(), "ok": ok, "detail": detail})
+    ping(ok)   # last, so that a dead ping service can never stop the state and heartbeat from being written
     return state
 
 
+def make_ping(url: str | None, opener: Callable[..., object] | None = None) -> Callable[[bool], None]:
+    """External dead-man's switch (healthchecks.io style): GET url when the VPS is alive and the API answers, url/fail when
+    the VPS is alive but the API does not. If the VPS or its cron dies the pings stop and the service alerts you, which
+    nothing on the VPS itself can do. No URL configured: a no-op. A failed ping is swallowed (it must never break the check)."""
+    import urllib.request
+    if not url:
+        return lambda ok: None
+    opener = opener or urllib.request.urlopen
+
+    def ping(ok: bool) -> None:
+        try:
+            opener(url if ok else url.rstrip("/") + "/fail", timeout=10)
+        except Exception as err:  # noqa: BLE001 - the ping service being down is not a Gateway problem: say so in the log, carry on
+            print(f"ping to the external heartbeat service failed: {type(err).__name__}: {err}")
+    return ping
+
+
 def main() -> int:  # pragma: no cover - entry point
+    import os
+
+    from dotenv import load_dotenv
+
     from tempo.notify import notify
-    run_once(now=datetime.now(ET), check=check_api, restart=restart_gateway, notify=lambda t, b: notify(t, b))
+    load_dotenv(ROOT / ".env")
+    run_once(now=datetime.now(ET), check=check_api, restart=restart_gateway, notify=lambda t, b: notify(t, b),
+             ping=make_ping(os.environ.get("TEMPO_HEALTHCHECK_URL")))
     return 0
 
 

@@ -63,3 +63,26 @@ def test_run_once_wires_check_restart_alert_and_persists_state(tmp_path):
     run(True, at(10, 30))
     assert calls["alerts"][-1].endswith("recovered") and json.loads(path.read_text(encoding="utf-8"))["failures"] == 0
     assert json.loads((tmp_path / "hb.json").read_text(encoding="utf-8"))["ok"] is True
+
+
+def test_ping_goes_to_the_url_when_ok_and_to_fail_when_not_and_never_raises():
+    from tempo.watchdog import make_ping
+    calls = []
+    ping = make_ping("https://hc.example/abc/", lambda url, timeout: calls.append((url, timeout)))
+    ping(True), ping(False)
+    assert calls == [("https://hc.example/abc/", 10), ("https://hc.example/abc/fail", 10)]
+    make_ping("https://x", lambda url, timeout: (_ for _ in ()).throw(OSError("down")))(True)     # reported, not raised
+    make_ping(None, lambda *a, **k: calls.append("never"))(True)
+    assert len(calls) == 2
+
+
+def test_run_once_pings_last_and_a_failing_ping_cannot_stop_the_state_being_written(tmp_path):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from tempo.watchdog import run_once
+    seen = []
+    state = run_once(now=datetime(2026, 11, 11, 12, 0, tzinfo=ZoneInfo("America/New_York")), check=lambda: (True, "ok"), restart=lambda: 0,
+                     notify=lambda t, b: None, state_path=tmp_path / "s.json", heartbeat_path=tmp_path / "h.json", log=lambda s: None,
+                     ping=lambda ok: seen.append((ok, (tmp_path / "h.json").exists())))
+    assert state.failures == 0 and seen == [(True, True)]                                         # heartbeat already on disk when pinged
