@@ -1,0 +1,40 @@
+{
+ "_note": "Pre-registered 2026-11-11 (evening), BEFORE the collector for this source was built and before any signal of this source was recorded or any return was seen. Do not edit to fit a result. To change a rule, add a dated entry to docs/research/log.md saying why, then edit.",
+ "purpose": "Post-earnings drift in the stocks that earnings_reaction_v1 deliberately excludes: smaller, less liquid companies. earnings_reaction_v1 (20-day average dollar volume of at least 5M USD) is expected to be a null, because the literature says drift has largely vanished for large stocks (Martineau 2021/2022, 'Rest in Peace PEAD': no drift for all but microcaps; Zhao 2022) while it may survive where trading is costly and attention is thin (Chordia, Goyal, Sadka, Sadka and Shivakumar 2009). All from search summaries on 2026-11-11, not full papers. This source asks whether the effect survives in the band below, with costs set high enough to be honest about it.",
+ "source_name": "earnings_reaction_small_v1",
+ "data": "Identical to earnings_reaction_v1: the SEC current 8-K Atom feed for item 2.02 filings, SEC company tickers, IBKR daily TRADES bars for the stock and SPY.",
+ "event_rule": "Identical to earnings_reaction_v1 (same events, same reaction-day rule, same reaction measure R = stock close-to-close move minus SPY's on the reaction day, same 5.0% threshold both ways, same 30-day no-repeat per issuer). The ONLY differences are the liquidity band and the cost.",
+ "liquidity_band": "At the close of the reaction day: close at least 3.00 USD and 20-day average dollar volume over the 20 sessions before it at least 500,000 USD and BELOW 5,000,000 USD. The two sources therefore never share a stock on the same day: this one takes exactly what earnings_reaction_v1 rejects for volume, minus the thinnest names.",
+ "signal_rule": "R at least +5.0% gives a long signal (+1); R at most -5.0% gives a short signal (-1); otherwise nothing.",
+ "emission": "Recorded by the late job after 16:20 ET on the reaction day; event_id is the reaction day (YYYYMMDD); price is the reaction-day close. A missed evening is lost, never recorded late.",
+ "timing": "Entry is the open of the first trading day strictly after the ledger date.",
+ "cost_assumption": "round_trip_cost 0.006 (60 bps): about 10 bps commission plus roughly 50 bps of spread and impact for stocks trading 0.5M to 5M USD a day. Short borrow fees are not modelled and many of these names cannot be borrowed.",
+ "ledger": "horizons 1, 5 and 21 trading days against SPY; primary horizon 21",
+ "multiplicity": "Ten ledger sources will run at once or soon (insider_cluster_v1, claude_earnings_v1, insider_opportunistic_v1, earnings_reaction_v1, analyst_actions_v1, weekly_reversal_v1, short_volume_v1, this one, and the volatility shadow, plus one spare). This source needs t above 2.9 (a one-sided 5% test split ten ways, Bonferroni, rounded up).",
+ "full_test": {
+  "minimum_scored_signals_at_primary_horizon": 100,
+  "pass_all_of": [
+   "mean net excess return at 21 days (direction-adjusted) above 1.0% after the 60 bps cost",
+   "t-statistic of the 21-day net excess returns above 2.9",
+   "hit rate at 21 days above 52%",
+   "positive mean net excess in BOTH chronological halves of the scored signals",
+   "LONG signals alone also have a positive mean net excess (a short-only result is not tradable here: borrow is unmodelled and often unavailable)",
+   "fewer than 10% of signals unscorable 30 trading days after their horizon"
+  ],
+  "reported_not_criteria": [
+   "1 and 5 day results",
+   "longs and shorts separately, by reaction size (5-10%, above 10%) and by dollar-volume half",
+   "events excluded by the band, missing bars and missing tickers (counts)",
+   "the comparison with earnings_reaction_v1 on the same days"
+  ]
+ },
+ "known_limits": [
+  "Most events cluster in four seasons, so signals arrive in bursts and are correlated within a day and a season: the t-statistic overstates the evidence. A single season is NOT an independent confirmation; a pass needs a second season (January 2027 or April 2027).",
+  "Daily bars only, delayed data: the reaction-day close already holds the first part of any drift.",
+  "Wide spreads make the 60 bps assumption uncertain in both directions; paper fills cannot settle it.",
+  "Short signals assume the stock can be borrowed; IBKR shortability is not checked.",
+  "The band edges (500k, 5M USD) are chosen by me before any result and are not tuned."
+ ],
+ "if_fail": "Report it as a failure and stop spending effort on post-earnings drift in small stocks.",
+ "if_pass": "Not proof and not real money: a second independent season, a realistic-size execution check (these names move on a 20,000 USD order), then evidence/gate.json."
+}
