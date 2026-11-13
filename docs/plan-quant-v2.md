@@ -288,7 +288,11 @@ through February; over 80% that the project helps a quant or software career [J,
    can exercise corporate actions.
 4. CPA questions (merge with section 4): tender and redemption vs market sale; capital vs T2125; superficial loss; USD/CAD per fill.
 5. Employer personal-trading policy in writing (gate in `plan-argent-reel.md`).
-6. Passive Russell measurement script before 2026-12-11.
+6. **DONE 2026-11-13: `tempo/russell_watch.py`** (5 tests; passive, no orders). Verified from the LSEG pages: preliminary additions/deletions published after the US close
+   on 2026-11-13, updates 11-20, 11-27 and 12-04, lockdown from 11-30, effective after the close of 2026-12-11. **The pages do not say where the lists are or in
+   what format**, so one manual step remains: copy the final list into `data/events/russell/lists.csv` (`symbol,action` with add or delete), then run
+   `python -m tempo.russell_watch` after 2026-12-14 and before about 2027-02-01 (IBKR's 5-minute history is two months). It measures runup, day, last5 and
+   reverse windows against IWM. One event is one sample: no verdict from it.
 
 ## 5. Sources
 
