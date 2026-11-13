@@ -210,7 +210,7 @@ def main(dates: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
     try:
         if len(sys.argv) < 2:
             raise ValueError("usage: python -m tempo.insider DATE [DATE ...]")
