@@ -2,7 +2,7 @@ import random
 
 import pytest
 
-from tempo.autopsy import (MIN_CELL, Trade, bonferroni_t, build_trades, candidate_patterns, cause, load_vix, pattern_cells,
+from tempo.autopsy import (MIN_CELL, Trade, bh_threshold, p_value, build_trades, candidate_patterns, cause, load_vix, pattern_cells,
                            trade_summary, vix_regime)
 
 
@@ -68,9 +68,18 @@ def test_vix_regime_compares_with_the_trailing_median_and_needs_history(tmp_path
     assert load_vix(f) == {"2026-01-01": 20.5} and load_vix(tmp_path / "none.csv") == {}
 
 
-def test_bonferroni_bar_grows_with_the_number_of_cells():
-    assert bonferroni_t(1) == pytest.approx(1.96, abs=0.01)
-    assert bonferroni_t(10) > bonferroni_t(2) > bonferroni_t(1)
+def test_bh_threshold_matches_a_hand_worked_example():
+    # m=5, q=0.10: bounds 0.02, 0.04, 0.06, 0.08, 0.10; sorted p 0.001, 0.03, 0.035, 0.5, 0.9 -> k=3 is the last with p <= bound
+    assert bh_threshold([0.9, 0.001, 0.5, 0.035, 0.03]) == 0.035
+    assert bh_threshold([0.5, 0.6, 0.7]) is None
+    assert bh_threshold([0.0, 0.5, 0.9]) == 0.0          # an underflowed p-value is a discovery, not 'nothing'
+    assert bh_threshold([0.001]) == 0.001
+
+
+def test_bh_is_less_strict_than_bonferroni_when_several_cells_carry_real_signal():
+    ps = [0.004, 0.006, 0.008, 0.3, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95]
+    assert bh_threshold(ps) == 0.008                       # all three signal cells pass
+    assert not any(p <= 0.05 / len(ps) for p in ps[1:3])   # Bonferroni (0.005) would have kept only the first
 
 
 def fake_cells(n_noise_cells, real_effect):
@@ -82,9 +91,10 @@ def fake_cells(n_noise_cells, real_effect):
 
 
 def test_only_a_strong_effect_in_a_big_enough_cell_is_a_candidate():
-    found, bar, examined = candidate_patterns(fake_cells(20, 0.02))
-    assert examined == 21 and [f[1] for f in found] == ["real"] and bar > 3
+    found, limit, examined = candidate_patterns(fake_cells(20, 0.02))
+    assert examined == 21 and [f[1] for f in found] == ["real"] and 0 <= limit < 0.01
     assert candidate_patterns(fake_cells(20, 0.0))[0] == []
+    assert candidate_patterns([]) == ([], 0.0, 0)
 
 
 def test_pattern_cells_split_by_direction_weekday_and_vix_on_the_sources_horizon():
@@ -95,3 +105,7 @@ def test_pattern_cells_split_by_direction_weekday_and_vix_on_the_sources_horizon
     cells = {(s, label): v for s, label, v in pattern_cells(sigs, scores, {})}
     assert cells[("short_volume_v1", "direction=short")] == [0.01] and cells[("short_volume_v1", "weekday=Thu")] == [-0.02]
     assert not any("vix" in label for _, label in cells)                                     # no VIX data: no vix cells
+
+
+def test_p_value_is_two_sided():
+    assert p_value(1.96) == pytest.approx(0.05, abs=0.001) and p_value(-1.96) == p_value(1.96) and p_value(0.0) == pytest.approx(1.0)
