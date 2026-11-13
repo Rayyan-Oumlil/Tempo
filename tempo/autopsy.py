@@ -15,8 +15,10 @@ Two parts, both read-only and deterministic (fixed thresholds below, no tuning):
    plus the average gap between paper and ledger (an estimate of what execution costs) and entry slippage.
 
 2. PATTERNS. Ledger net excess returns split by direction, VIX regime and weekday. A cell is reported as a CANDIDATE PATTERN
-   only with at least MIN_CELL scores and |t| above a Bonferroni-corrected bar for the number of cells examined. A candidate
-   is a question for a challenger (tempo.champion), never a reason to change a rule.
+   only with at least MIN_CELL scores and a p-value that passes Benjamini-Hochberg at FDR (10%) over all the cells examined (the
+   cells overlap and move together, the positive-dependence case BH is valid for; Bonferroni was too strict for about 90 cells).
+   A candidate is a question for a challenger (tempo.champion), never a reason to change a rule: it nominates, the pre-registered
+   forward test decides.
 """
 from __future__ import annotations
 
@@ -121,10 +123,20 @@ def vix_regime(vix: dict[str, float], day: str) -> str | None:
     return "high" if vix[day] > statistics.median(past) else "low"
 
 
-def bonferroni_t(k: int) -> float:
-    """Two-sided 5% critical value, normal approximation, split across k cells (the t distribution is wider at small n,
-    so this is a floor, not a guarantee)."""
-    return statistics.NormalDist().inv_cdf(1 - 0.025 / max(k, 1))
+FDR = 0.10
+
+
+def p_value(t: float) -> float:
+    """Two-sided p from a t statistic, normal approximation (the t distribution is wider at small n, so this flatters a little:
+    one more reason a candidate is only a nomination)."""
+    return 2 * (1 - statistics.NormalDist().cdf(abs(t)))
+
+
+def bh_threshold(pvals: list[float], q: float = FDR) -> float | None:
+    """Benjamini-Hochberg: the largest p-value p_(k) with p_(k) <= k*q/m, or None if none passes (0.0 is a real threshold: a p-value can underflow to zero)."""
+    m = len(pvals)
+    passing = [p for k, p in enumerate(sorted(pvals), 1) if p <= k * q / m]
+    return max(passing) if passing else None
 
 
 def pattern_cells(signals: list[dict], scores: list[dict], vix: dict[str, float]) -> list[tuple[str, str, list[float]]]:
@@ -145,11 +157,16 @@ def pattern_cells(signals: list[dict], scores: list[dict], vix: dict[str, float]
 
 
 def candidate_patterns(cells: list[tuple[str, str, list[float]]]) -> tuple[list[tuple[str, str, int, float, float]], float, int]:
-    """(candidates, t bar, cells examined). Only cells with MIN_CELL scores count as examined."""
+    """(candidates, BH p threshold, cells examined). Only cells with MIN_CELL scores count as examined."""
     eligible = [c for c in cells if len(c[2]) >= MIN_CELL]
-    bar = bonferroni_t(len(eligible))
-    found = [(src, label, len(v), statistics.fmean(v), t_statistic(v)) for src, label, v in eligible if abs(t_statistic(v)) > bar]
-    return found, bar, len(eligible)
+    if not eligible:
+        return [], 0.0, 0
+    ts = [t_statistic(v) for _, _, v in eligible]
+    limit = bh_threshold([p_value(t) for t in ts])
+    if limit is None:
+        return [], 0.0, len(eligible)
+    found = [(src, label, len(v), statistics.fmean(v), t) for (src, label, v), t in zip(eligible, ts) if p_value(t) <= limit]
+    return found, limit, len(eligible)
 
 
 def report(ledger: Ledger | None = None, paper_path: Path = PAPER_FILE, vix_path: Path = VIX_FILE) -> str:
@@ -170,7 +187,7 @@ def report(ledger: Ledger | None = None, paper_path: Path = PAPER_FILE, vix_path
                      f"(gap {gap}), entry slippage {s['mean_slip']:+.3%}; causes {s['causes']}")
     cells = pattern_cells(ledger.signals(), ledger.scores(), load_vix(vix_path))
     found, bar, examined = candidate_patterns(cells)
-    lines.append(f"PATTERNS: {examined} cells with at least {MIN_CELL} scores examined; |t| must exceed {bar:.2f} (Bonferroni)")
+    lines.append(f"PATTERNS: {examined} cells with at least {MIN_CELL} scores examined; Benjamini-Hochberg at {FDR:.0%} FDR, a cell passes if p <= {bar:.4f}")
     lines += [f"  CANDIDATE {src} {label}: n={n}, mean net excess {mean:+.2%}, t={t:.2f}" for src, label, n, mean, t in found]
     if not found:
         lines.append("  none. Nothing in the data justifies a challenger yet.")
