@@ -43,3 +43,9 @@ def test_a_stale_collector_is_a_problem(monkeypatch):
     assert len(_problems(collector_age_days={"opt": None})[1]) == 1
     assert _problems(collector_age_days={"opt": 0.2})[1] == []
     assert _problems(collector_age_days={"opt": 9.0}, trading_day=False, sched_lines_today=())[1] == []
+
+
+def test_slippage_alarms_and_table_reach_the_email():
+    subject, body = dr.build(dr.Facts(**GOOD, slippage_text="TABLE", slippage_alarms=("x: 80 bps",)))
+    assert "1 PROBLEM" in subject and "PROBLEM: paper fills vs ledger: x: 80 bps" in body and "TABLE" in body
+    assert dr.build(dr.Facts(**GOOD))[0] == "Tempo daily: all good"
