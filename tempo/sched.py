@@ -65,7 +65,7 @@ def steps_for(job: str, today: date) -> list[Step]:
     if job == "late":   # after FINRA publishes (about 18:00 ET): free data first, then the signals that read it
         return [Step((py, "-m", "tempo.snapshots")), Step((py, "-m", "tempo.option_snapshot")),
                 Step((py, "-m", "tempo.short_volume")), Step((py, "-m", "tempo.earnings_reaction_small")),
-                Step((py, "-m", "tempo.ledger_score")),
+                Step((py, "-m", "tempo.event_risk")), Step((py, "-m", "tempo.ledger_score")),
                 Step((py, "-m", "tempo.autopsy")), Step((py, "-m", "tempo.champion"))]
     raise ValueError(f"unknown job {job!r}; expected one of {JOBS}")
 
