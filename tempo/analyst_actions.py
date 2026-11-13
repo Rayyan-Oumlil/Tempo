@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 from tempo.daybars import day_bars, liquid, load_universe
 from tempo.hours import is_trading_day
 from tempo.ledger import Ledger, SignalRefused
+from tempo.snapshots import Borrow, context_features, load_shortstock
 
 SOURCE = "analyst_actions_v1"
 UNIVERSE = "evidence/universe_sp500_20261111.txt"
@@ -90,14 +91,15 @@ def fetch_news(ib, con_id: int) -> list | None:
         return None
 
 
-def record_signals(hits: list[dict], ledger: Ledger) -> list[dict]:
+def record_signals(hits: list[dict], ledger: Ledger, borrow: dict[str, Borrow] | None = None) -> list[dict]:
     recorded = []
     for h in hits:
         try:
             recorded.append(ledger.record_signal(
                 source=SOURCE, symbol=h["symbol"], direction=h["direction"], event_id=h["day"].replace("-", ""),
                 price=h["close"], features={"round_trip_cost": ROUND_TRIP_COST, "adv20": round(h["adv20"]),
-                                            **action_features(h.get("actions", []), h["close"])}))
+                                            **action_features(h.get("actions", []), h["close"]),
+                                            **context_features(h, borrow, h["symbol"])}))
         except SignalRefused:
             continue
     return recorded
@@ -139,9 +141,9 @@ def run(now: datetime, ib, ledger: Ledger, say=print) -> int:  # pragma: no cove
             counts[m["status"]] += 1
             continue
         counts["signal"] += 1
-        hits.append({"symbol": symbol, "direction": direction, "day": day.isoformat(), "close": m["close"], "adv20": m["adv20"],
+        hits.append({"symbol": symbol, "direction": direction, "day": day.isoformat(), "close": m["close"], "adv20": m["adv20"], "vol20": m["vol20"],
                      "actions": actions_in_window(symbol, headlines, day)})
-    recorded = record_signals(hits, ledger)
+    recorded = record_signals(hits, ledger, load_shortstock(day))
     say(f"analyst actions {day}: {counts}; new signals recorded: {len(recorded)}")
     for r in recorded:
         say(f"  {r['symbol']:<6} {'LONG ' if r['direction'] == 1 else 'SHORT'}")

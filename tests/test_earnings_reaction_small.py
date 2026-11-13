@@ -1,3 +1,4 @@
+from tempo.snapshots import borrow_features
 import pytest
 
 from tempo import earnings_reaction as big
@@ -53,5 +54,5 @@ def test_borrow_terms_are_logged_beside_the_signal_and_missing_data_is_not_a_zer
     assert got[0]["features"]["borrow_fee"] == 38.0 and got[0]["features"]["borrow_available"] == 100_000
     assert got[0]["features"]["borrow_capped"] is True and got[0]["features"]["borrow_known"] is True
     assert got[1]["features"] == {**got[1]["features"], "borrow_known": False} and "borrow_fee" not in got[1]["features"]
-    assert small.borrow_features("AAA", None) == {"borrow_known": False}
-    assert small.borrow_features("NA", {"NA": Borrow(None, None, None, False)})["borrow_fee"] is None
+    assert borrow_features("AAA", None) == {"borrow_known": False}
+    assert borrow_features("NA", {"NA": Borrow(None, None, None, False)})["borrow_fee"] is None

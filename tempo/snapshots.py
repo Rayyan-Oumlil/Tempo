@@ -201,6 +201,22 @@ def collect_shortstock(today: date, fetch: Callable[[], bytes] = ftp_shortstock,
     return "saved"
 
 
+def borrow_features(symbol: str, table: dict[str, Borrow] | None) -> dict:
+    """Stock-loan facts logged beside a signal (never used to filter it: the fee veto is a later, pre-registered test).
+    A missing file or symbol is recorded as such, not as a zero fee."""
+    b = table.get(symbol) if table else None
+    if b is None:
+        return {"borrow_known": False}
+    return {"borrow_known": True, "borrow_fee": b.fee, "borrow_rebate": b.rebate, "borrow_available": b.available,
+            "borrow_capped": b.capped}
+
+
+def context_features(hit: dict, table: dict[str, Borrow] | None, symbol: str) -> dict:
+    """B6 conditioning features shared by every source: pre-event volatility and stock-loan terms. Logged, never used to filter."""
+    vol = hit.get("vol20")
+    return {"vol20": None if vol is None else round(vol, 5), **borrow_features(symbol, table)}
+
+
 def load_shortstock(day: date, snap: Path = SNAP) -> dict[str, Borrow] | None:
     path = snap / "ibkr_shortstock" / f"{day:%Y%m%d}.txt.gz"
     if not path.exists():

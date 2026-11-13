@@ -56,7 +56,7 @@ def test_direction_needs_an_action_inside_the_window_and_no_conflict():
 
 def test_liquidity_filter_uses_the_signal_day_close_and_the_20_days_before():
     bars = DayBars([f"2026-10-{d:02d}" for d in range(1, 23)], [10.0] * 22, [600_000.0] * 22)
-    assert liquid(bars, "2026-10-22") == {"status": "ok", "close": 10.0, "adv20": 6_000_000.0}
+    assert liquid(bars, "2026-10-22") == {"status": "ok", "close": 10.0, "adv20": 6_000_000.0, "vol20": 0.0}
     assert liquid(bars, "2026-11-30")["status"] == "no_bar"
     assert liquid(DayBars(bars.dates[:10], bars.close[:10], bars.volume[:10]), "2026-10-10")["status"] == "short_history"
     assert liquid(DayBars(bars.dates, [4.0] * 22, bars.volume), "2026-10-22")["status"] == "filtered"
