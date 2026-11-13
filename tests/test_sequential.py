@@ -53,12 +53,12 @@ def score_rows(source, xs, horizon=5):
 
 def test_analyse_reports_nothing_certain_with_few_days_and_deflates_among_several_sources():
     rows = sq.analyse(score_rows("few", [0.01] * 5))
-    assert rows[0]["ci"] is None and rows[0]["p"] is None and "no interval yet" in sq.render(rows)
+    assert rows[0].ci is None and rows[0].p is None and "no interval yet" in sq.render(rows)
     scores = score_rows("good", noise(120, 0.02, 0.01, 6)) + score_rows("flat1", noise(120, 0.0, 0.02, 7)) + score_rows("flat2", noise(120, 0.0, 0.02, 8))
-    by = {r["source"]: r for r in sq.analyse(scores)}
-    assert by["good"]["ci"][0] > 0 and by["good"]["p"] < 0.001 and by["good"]["dsr"] > 0.9
-    assert by["flat1"]["ci"][0] < 0 < by["flat1"]["ci"][1] and by["flat1"]["p"] > 0.05
-    assert by["good"]["days_needed"] < by["flat1"]["days_needed"]
+    by = {r.source: r for r in sq.analyse(scores)}
+    assert by["good"].ci[0] > 0 and by["good"].p < 0.001 and by["good"].dsr > 0.9
+    assert by["flat1"].ci[0] < 0 < by["flat1"].ci[1] and by["flat1"].p > 0.05
+    assert by["good"].days_needed < by["flat1"].days_needed
 
 
 def test_deflated_sharpe_needs_at_least_two_tries_and_falls_as_tries_grow():
@@ -73,8 +73,8 @@ def test_interval_is_196_standard_errors_and_widens_with_the_horizon():
     xs = [mean(base[i:i + 5]) for i in range(0, 120)]
     one = sq.analyse(score_rows("s", xs, horizon=1))[0]
     five = sq.analyse(score_rows("s", xs, horizon=5))[0]
-    assert math.isclose((one["ci"][1] - one["ci"][0]) / 2, 1.96 * one["mde"] / 2.8)
-    assert (five["ci"][1] - five["ci"][0]) > 1.5 * (one["ci"][1] - one["ci"][0])
+    assert math.isclose((one.ci[1] - one.ci[0]) / 2, 1.96 * one.mde / 2.8)
+    assert (five.ci[1] - five.ci[0]) > 1.5 * (one.ci[1] - one.ci[0])
 
 
 def test_msprt_charges_for_overlap_and_remembers_an_early_peak():

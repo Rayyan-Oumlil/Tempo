@@ -14,7 +14,7 @@ M = [
     ("per-source cost ignored", "exec_score.py", "cost = signal[\"features\"].get(\"round_trip_cost\", ROUND_TRIP_COST)", "cost = ROUND_TRIP_COST"),
     ("exit at the close, not 15 minutes before", "exec_score.py", "EXIT_MINUTES_BEFORE_CLOSE = 15", "EXIT_MINUTES_BEFORE_CLOSE = 0"),
     ("entry at the open, not 09:40", "exec_score.py", "ENTRY_HHMM = \"09:40\"", "ENTRY_HHMM = \"09:30\""),
-    ("a missing bar is guessed", "exec_score.py", "if any(p is None for p in px):", "if False:"),
+    ("a missing bar is guessed", "exec_score.py", "if entry_px is None or exit_px is None or bench_entry is None or bench_exit is None:", "if False:"),
     ("a short history still gets a beta", "exec_score.py", "MIN_BETA_DAYS = 40", "MIN_BETA_DAYS = 1"),
     ("exit one day late", "exec_score.py", "daily.dates[entry + horizon - 1]", "daily.dates[entry + horizon]"),
     ("score not stamped with the method", "exec_score.py", "\"method\": METHOD, ", ""),

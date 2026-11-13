@@ -19,6 +19,7 @@ from __future__ import annotations
 import math
 import sys
 from collections import defaultdict
+from dataclasses import dataclass, replace
 from statistics import NormalDist, mean, pstdev, variance
 
 from tempo.ledger import Ledger
@@ -85,38 +86,52 @@ def deflated_sharpe(sr: float, n: int, skew: float, kurt: float, sr_all: list[fl
     return N.cdf((sr - sr0) * math.sqrt(n - 1) / math.sqrt(denom))
 
 
-def analyse(scores: list[dict]) -> list[dict]:
-    rows = []
+@dataclass(frozen=True)
+class Evidence:
+    source: str
+    horizon: int
+    trades: int
+    days: int
+    mean: float
+    ci: tuple[float, float] | None = None
+    t: float | None = None
+    mde: float | None = None
+    days_needed: int | None = None
+    p: float | None = None
+    sharpe: float | None = None
+    dsr: float | None = None
+
+
+def analyse(scores: list[dict]) -> list[Evidence]:
+    rows: list[Evidence] = []
+    stats: dict[int, tuple[float, float, float]] = {}
     for (source, horizon), days in sorted(cohorts(scores).items()):
         x = [m for _, m, _ in days]
-        row = {"source": source, "horizon": horizon, "trades": sum(c for _, _, c in days), "days": len(x), "mean": mean(x),
-               "ci": None, "t": None, "mde": None, "days_needed": None, "p": None, "sharpe": None, "dsr": None}
+        base = Evidence(source, horizon, sum(c for _, _, c in days), len(x), mean(x))
         if len(x) >= MIN_DAYS:
             lag = max(horizon - 1, 0)
             se = math.sqrt(hac_variance_of_mean(x, lag))
-            row.update(ci=(row["mean"] - 1.96 * se, row["mean"] + 1.96 * se), t=row["mean"] / se, mde=Z_POWER * se,
-                       days_needed=math.ceil((Z_POWER * se * math.sqrt(len(x)) / TARGET) ** 2), p=msprt_p(x, lag))
-            row["_sr"] = sharpe_stats(x)
-            row["sharpe"] = row["_sr"][0]
-        rows.append(row)
-    srs = [r["sharpe"] for r in rows if r["sharpe"] is not None]
-    for r in rows:
-        if r["sharpe"] is not None:
-            sr, skew, kurt = r.pop("_sr")
-            r["dsr"] = deflated_sharpe(sr, r["days"], skew, kurt, srs)
+            stats[len(rows)] = sharpe_stats(x)
+            base = replace(base, ci=(base.mean - 1.96 * se, base.mean + 1.96 * se), t=base.mean / se, mde=Z_POWER * se,
+                           days_needed=math.ceil((Z_POWER * se * math.sqrt(len(x)) / TARGET) ** 2), p=msprt_p(x, lag),
+                           sharpe=stats[len(rows)][0])
+        rows.append(base)
+    srs = [sr for sr, _, _ in stats.values()]
+    for i, (sr, skew, kurt) in stats.items():
+        rows[i] = replace(rows[i], dsr=deflated_sharpe(sr, rows[i].days, skew, kurt, srs))
     return rows
 
 
-def render(rows: list[dict]) -> str:
+def render(rows: list[Evidence]) -> str:
     head = f"{'source':22} {'h':>3} {'trades':>6} {'days':>4} {'mean net':>9} {'95% interval':>17} {'t':>5} {'MDE':>6} {'days for 1%':>11} {'always-valid p':>14} {'DSR':>5}"
     out = [head]
     for r in rows:
-        if r["ci"] is None:
-            out.append(f"{r['source']:22} {r['horizon']:>3} {r['trades']:>6} {r['days']:>4} {r['mean']:>+9.2%}   (fewer than {MIN_DAYS} cohort days: no interval yet)")
+        if r.ci is None or r.t is None or r.mde is None or r.p is None:
+            out.append(f"{r.source:22} {r.horizon:>3} {r.trades:>6} {r.days:>4} {r.mean:>+9.2%}   (fewer than {MIN_DAYS} cohort days: no interval yet)")
             continue
-        dsr = "-" if r["dsr"] is None else f"{r['dsr']:.2f}"
-        out.append(f"{r['source']:22} {r['horizon']:>3} {r['trades']:>6} {r['days']:>4} {r['mean']:>+9.2%} "
-                   f"[{r['ci'][0]:+.2%},{r['ci'][1]:+.2%}] {r['t']:>5.1f} {r['mde']:>6.2%} {r['days_needed']:>11} {r['p']:>14.3f} {dsr:>5}")
+        dsr = "-" if r.dsr is None else f"{r.dsr:.2f}"
+        out.append(f"{r.source:22} {r.horizon:>3} {r.trades:>6} {r.days:>4} {r.mean:>+9.2%} "
+                   f"[{r.ci[0]:+.2%},{r.ci[1]:+.2%}] {r.t:>5.1f} {r.mde:>6.2%} {r.days_needed:>11} {r.p:>14.3f} {dsr:>5}")
     out.append("net excess after the source's registered cost; cohort = trades sharing an entry day; HAC lag = horizon - 1; "
                "p is approximate (see module note); the registered pass rule still decides.")
     return "\n".join(out)
