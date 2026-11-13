@@ -194,7 +194,7 @@ def test_ibkr_chatter_is_folded_so_the_real_summary_survives_the_tail():
 
 def test_the_late_job_collects_data_before_it_records_and_survives_one_failing_step(tmp_path):
     steps = [s.argv[-1] for s in steps_for("late", ENTRY)]
-    assert steps == ["tempo.snapshots", "tempo.option_snapshot", "tempo.short_volume", "tempo.earnings_reaction_small", "tempo.ledger_score", "tempo.autopsy", "tempo.champion"]
+    assert steps == ["tempo.snapshots", "tempo.option_snapshot", "tempo.short_volume", "tempo.earnings_reaction_small", "tempo.event_risk", "tempo.ledger_score", "tempo.autopsy", "tempo.champion"]
     assert all(("IBKR_READONLY", "0") not in s.env for s in steps_for("late", ENTRY))
     seen = []
 
