@@ -1,4 +1,4 @@
-"""C2 kill filter: does a large post-earnings price reaction drift further over 5 days, 2010 to 2025, net of nothing, gross?
+"""C2 kill filter: does a large post-earnings price reaction drift further over 5 days, 2011 to 2025, gross?
 
 It can only KILL a band. The sample is today's listed tickers, so delisted and bankrupt names are missing: that flatters the long
 leg and understates the short leg, the bias has no known sign for the spread, and a band that passes proves nothing (it still goes to
@@ -38,7 +38,7 @@ from tempo.sequential import hac_variance_of_mean
 ET = ZoneInfo("America/New_York")
 ROOT = Path(__file__).resolve().parents[1]
 HIST = ROOT / "data" / "history" / "earnings"
-FIRST, LAST = date(2010, 1, 1), date(2025, 12, 31)
+FIRST, LAST = date(2011, 1, 1), date(2025, 12, 31)       # IBKR serves 16 years of daily bars, back to 2010-11-18
 HORIZON = 5
 SEED = 20261113
 SAMPLE = 1500
