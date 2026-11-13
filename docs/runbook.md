@@ -20,11 +20,27 @@ VPS via `deploy/crontab`, same ET times). Your only daily job: keep IB Gateway l
 | 06:30 | morning | `tempo.insider` for the last 3 trading days: insider_cluster_v1 and insider_opportunistic_v1 |
 | 09:40 to 13:30, final 15:00 | entries | paper entries if any are due (fails closed if the P&L is unreadable; reruns are safe) |
 | 15:46, 15:50, final 15:55 | exits | paper exits if any are due |
-| 16:35, 18:00 | evening | `tempo.earnings_reaction` (only on the reaction day, after 16:20), `ledger_score`, `ledger`, commit and push the ledger |
+| 16:35, 18:00 | evening | `tempo.earnings_reaction` (only on the reaction day, after 16:20), `analyst_actions`, `weekly_reversal`, `ledger_score`, `ledger`, commit and push the ledger |
+| 19:15, 20:30 | late | after FINRA publishes: `snapshots`, `option_snapshot`, `short_volume`, `earnings_reaction_small`, `event_risk` (D5 log), `ledger_score`, `autopsy`, `champion`, commit and push |
+| every 10 min | watchdog | `tempo.watchdog`: a full API round trip (positions, orders, executions), not just the socket; restarts the Gateway container after 3 bad checks |
+| 21:30 | daily report | `tempo.daily_report` emails one line "all good" or "N PROBLEM(S)": watchdog, failed jobs, backup, disk, data collectors, paper fills vs ledger, Gateway login errors |
 
 Ledger-only sources (not paper-traded): insider_opportunistic_v1, earnings_reaction_v1, claude_earnings_v1. The routine
 index for insider_opportunistic_v1 is `data/insider_routine.json`; rebuild it each January with
 `python -m tempo.insider_history build` (the morning job fails loudly if it does not cover the three previous years).
+
+## Reading the research (all read-only, run on the VPS or locally)
+| Command | Answers |
+|---|---|
+| `python -m tempo.sequential` | per source and horizon: mean net excess, Newey-West interval, always-valid p, days still needed, deflated Sharpe; `[clean]` rows drop SPAC and IPO-allocation insider signals; known-unavailable shorts are left out and counted |
+| `python -m tempo.slippage` | paper fill vs ledger price in bps; entries more than 30 min after 09:40 are shown apart as `late` and never alarm |
+| `python -m tempo.portfolio_view` | equal-risk blend, correlations between sources, effective number of independent bets |
+| `python -m tempo.beta_compare` | would a winsorised beta have changed the scores (needs Gateway; report only) |
+| `python -m tempo.autopsy` | cells where a source does unusually well or badly; nominates challengers at 10% false discovery rate |
+| `python -m tempo.events_scan`, `tempo.russell_watch` | passive EDGAR event counts; the December 2026 Russell reconstitution (needs `data/events/russell/lists.csv` by hand) |
+| `python -m tempo.history_earnings report`, `tempo.history_shortvol report` | C2 and C1 history kill filters (after `fetch`; both can only kill an idea, never confirm it) |
+
+Pure functions built but NOT in the order path (need a broker dry run first): `tempo.sizing` (equal-risk size), `tempo.exposure` (net cap, SPY hedge, sector cap).
 
 ## A normal trading day
 1. **Morning, any time after about 06:00 ET:** `python -m tempo.insider <previous trading day>`. The SEC builds a day's index overnight. After any gap, give the missed days in order, oldest first: `python -m tempo.insider 2026-11-03 2026-11-04 2026-11-05` (signals are computed as of the last date).
@@ -46,6 +62,7 @@ index for insider_opportunistic_v1 is `data/insider_routine.json`; rebuild it ea
 | Symptom | What it means / what to do |
 |---|---|
 | `Gateway not reachable` / timeout | Gateway is closed or logged out (IBKR logs out daily and asks for a fresh login about weekly). Log in again; a missed entry day stays missed. |
+| Socket connects but positions/orders requests time out | The Gateway is stuck on a login error dialog (seen 2026-11-13: "Unrecognized Username or Password" at the 00:15 re-login, no credential change). `sudo docker restart tempo-ib-gateway-1`, wait 2 minutes, check `docker logs`. The watchdog now detects this and restarts after 3 checks; the daily email names the error. A 15:00 catch-up entry is tagged `late` in the slippage report. |
 | `paper_run needs IBKR_READONLY=0` | Orders are disabled on purpose. Set the variable and untick Read-Only API. |
 | `not allowed now` | Entries need 09:35 ET or later, exits 15 minutes before the close, regular hours only. |
 | `[FAIL] journal ... unresolved` | A previous order has no recorded outcome. `python -m tempo.reconcile` (add `--accept-missing` for cancelled ones). New entries are blocked until this is clear. |
