@@ -3,7 +3,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-
+from tempo import paper_run
 from tempo.journal import Journal
 from tempo.ledger import Ledger
 from tempo.orders import Limits
@@ -12,6 +12,15 @@ from tempo.paper_run import (HORIZONS, NOTIONAL_PCT, due_actions, entries_allowe
 from tests.fakes import FakeIB
 
 ET = ZoneInfo("America/New_York")
+REAL_NO_NEW_ENTRIES = paper_run.NO_NEW_ENTRIES          # captured before any patching
+
+
+@pytest.fixture(autouse=True)
+def every_source_enters(monkeypatch):
+    """The plumbing tests use insider_cluster_v1 as a generic 21-day source; its real retirement is tested on its own."""
+    monkeypatch.setattr(paper_run, "NO_NEW_ENTRIES", frozenset())
+
+
 LIMITS = Limits(max_position_pct=50.0)
 
 
@@ -388,3 +397,21 @@ def test_preflight_waits_as_long_as_the_entries_gate_does(tmp_path):
     asked = []
     run_preflight(make_preflight_env(tmp_path), et(2026, 11, 3, 9, 40), loss_fn=lambda ib, timeout=5.0: asked.append(timeout) or 0.3)
     assert asked == [PNL_WARMUP_SECONDS]
+
+
+def _signal(source, symbol, day="2026-11-02"):
+    return {"signal_id": f"{source}:{symbol}:e", "source": source, "symbol": symbol, "direction": 1, "date_et": day, "features": {}}
+
+
+def test_a_retired_source_gets_no_new_entries_and_no_missed_noise_but_open_positions_still_exit(monkeypatch):
+    monkeypatch.setattr(paper_run, "NO_NEW_ENTRIES", REAL_NO_NEW_ENTRIES)
+    assert REAL_NO_NEW_ENTRIES == frozenset({"insider_cluster_v1"})       # amendment 2026-11-12: IPO/SPAC contamination
+    new = _signal("insider_cluster_v1", "NEW")
+    held = _signal("insider_cluster_v1", "HELD", day="2026-11-04")
+    live = _signal("analyst_actions_v1", "LIVE")
+    state = {held["signal_id"]: {"status": "entered", "qty": 5, "direction": 1}}
+    due = due_actions([new, held, live], state, date(2026, 11, 3))      # entry day of `new` and `live`
+    assert [s["symbol"] for s in due["enter"]] == ["LIVE"] and due["missed"] == []
+    exit_day = schedule("2026-11-04", HORIZONS["insider_cluster_v1"])[1]
+    assert [s["symbol"] for s, _ in due_actions([new, held, live], state, exit_day)["exit"]] == ["HELD"]   # still exits on time
+    assert due_actions([new], {}, date(2026, 11, 9))["missed"] == []     # a past entry day is not logged as missed either

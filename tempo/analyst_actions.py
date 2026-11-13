@@ -26,7 +26,7 @@ MAX_NEWS_FAILED_SHARE = 0.02   # more than this share of unanswered symbols mean
 ET = ZoneInfo("America/New_York")
 CLOSE = time(16, 0)
 HEADLINE = re.compile(r"^(?:\{[^}]*\})?!?(?P<firm>.+?) (?P<action>upgraded|downgraded) (?P<company>.+?) "
-                      r"\((?P<symbol>[A-Z]{1,5})\) to (?P<rating>.+?)(?: with target \$[\d.,]+)?$")
+                      r"\((?P<symbol>[A-Z]{1,5})\) to (?P<rating>.+?)(?: with target \$(?P<target>[\d.,]+))?$")
 
 
 def parse_headline(text: str) -> dict | None:
@@ -34,7 +34,8 @@ def parse_headline(text: str) -> dict | None:
     if not m:
         return None
     return {"symbol": m.group("symbol"), "direction": 1 if m.group("action") == "upgraded" else -1,
-            "firm": m.group("firm").strip(), "rating": m.group("rating").strip()}
+            "firm": m.group("firm").strip(), "rating": m.group("rating").strip(),
+            "target": float(m.group("target").replace(",", "")) if m.group("target") else None}
 
 
 def _previous_trading_day(day: date) -> date:
@@ -56,14 +57,28 @@ def _as_utc(stamp) -> datetime:
     return stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)
 
 
-def direction_for(symbol: str, headlines: list[tuple], day: date) -> int | None:
+def actions_in_window(symbol: str, headlines: list[tuple], day: date) -> list[dict]:
+    """Every parsed upgrade/downgrade of `symbol` timed inside the signal window, in the order given."""
     start, end = window(day)
-    found = set()
+    out = []
     for stamp, text in headlines:
         p = parse_headline(text)
         if p and p["symbol"] == symbol and start < _as_utc(stamp) <= end:
-            found.add(p["direction"])
+            out.append(p)
+    return out
+
+
+def direction_for(symbol: str, headlines: list[tuple], day: date) -> int | None:
+    found = {a["direction"] for a in actions_in_window(symbol, headlines, day)}
     return found.pop() if len(found) == 1 else None
+
+
+def action_features(actions: list[dict], close: float) -> dict:
+    """What the headlines said, kept so later analysis (tempo.autopsy, a registered challenger) can condition on it
+    without a new data source: who, what rating, what target, how many firms, and the target relative to the price."""
+    ups = [a["target"] / close - 1 for a in actions if a["target"]]
+    return {"n_actions": len(actions), "firms": [a["firm"] for a in actions], "ratings": [a["rating"] for a in actions],
+            "targets": [a["target"] for a in actions], "target_vs_price": sum(ups) / len(ups) if ups else None}
 
 
 def fetch_news(ib, con_id: int) -> list | None:
@@ -81,7 +96,8 @@ def record_signals(hits: list[dict], ledger: Ledger) -> list[dict]:
         try:
             recorded.append(ledger.record_signal(
                 source=SOURCE, symbol=h["symbol"], direction=h["direction"], event_id=h["day"].replace("-", ""),
-                price=h["close"], features={"round_trip_cost": ROUND_TRIP_COST, "adv20": round(h["adv20"])}))
+                price=h["close"], features={"round_trip_cost": ROUND_TRIP_COST, "adv20": round(h["adv20"]),
+                                            **action_features(h.get("actions", []), h["close"])}))
         except SignalRefused:
             continue
     return recorded
@@ -112,7 +128,8 @@ def run(now: datetime, ib, ledger: Ledger, say=print) -> int:  # pragma: no cove
             counts["news_failed"] += 1
             failed.append(symbol)
             continue
-        direction = direction_for(symbol, [(n.time, n.headline) for n in news], day)
+        headlines = [(n.time, n.headline) for n in news]
+        direction = direction_for(symbol, headlines, day)
         if direction is None:
             continue
         counts["actions"] += 1
@@ -122,7 +139,8 @@ def run(now: datetime, ib, ledger: Ledger, say=print) -> int:  # pragma: no cove
             counts[m["status"]] += 1
             continue
         counts["signal"] += 1
-        hits.append({"symbol": symbol, "direction": direction, "day": day.isoformat(), "close": m["close"], "adv20": m["adv20"]})
+        hits.append({"symbol": symbol, "direction": direction, "day": day.isoformat(), "close": m["close"], "adv20": m["adv20"],
+                     "actions": actions_in_window(symbol, headlines, day)})
     recorded = record_signals(hits, ledger)
     say(f"analyst actions {day}: {counts}; new signals recorded: {len(recorded)}")
     for r in recorded:

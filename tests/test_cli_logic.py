@@ -83,7 +83,7 @@ def test_the_ledger_report_for_an_empty_ledger_and_for_scored_signals(tmp_path):
     days = ["2026-11-03", "2026-11-04", "2026-11-05"]
     stock = Bars(days, [10.0, 10.0, 10.5], [10.2, 10.4, 10.9], [9.9, 9.9, 10.4], [10.1, 10.4, 10.9])
     bench = Bars(days, [100.0, 100.0, 100.5], [100.2, 100.4, 100.7], [99.9, 99.9, 100.4], [100.1, 100.4, 100.7])
-    ledger.record_scores([score_signal(sig, stock, bench, 1)])
+    ledger.record_scores([{**score_signal(sig, stock, bench, 1), "method": "exec_v2"}])
     text = report(ledger)
     assert "src_v1: 1 signals (2026-11-03 to 2026-11-03)" in text
     assert " 1-day: n=1" in text and "NOT ENOUGH SCORED SIGNALS" in text and " 5-day: n=0" in text
@@ -140,6 +140,7 @@ def test_the_scoring_command_connects_scores_and_always_disconnects(monkeypatch,
     monkeypatch.setattr("tempo.config.load_config", lambda: SimpleNamespace())
     monkeypatch.setattr(ledger_score, "Ledger", lambda: ledger)
     monkeypatch.setattr(ledger_score, "ibkr_bars", lambda ib, symbol: None)                 # no prices yet: everything must wait
+    monkeypatch.setattr(ledger_score, "ibkr_intraday", lambda ib, symbol: None)
     assert ledger_score.main() == 0
     assert "scores written: 0; still waiting: 3" in capsys.readouterr().out and log == ["disconnected"]
 

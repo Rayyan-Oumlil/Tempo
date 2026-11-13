@@ -5,6 +5,7 @@ Usage: python -m tempo.snapshots        (the "late" job runs it on trading days 
   finra_short_volume/YYYYMMDD.txt.gz   FINRA Reg SHO consolidated daily short volume, one file per trading day (free, no key)
   fred/VIXCLS.csv, fred/VXVCLS.csv     VIX and its 3-month cousin from FRED (the term structure), rewritten each run
   sec_ftd/cnsfailsYYYYMM{a,b}.zip      SEC fails-to-deliver, twice a month, published about two weeks late
+  ibkr_shortstock/YYYYMMDD.txt.gz      IBKR's public stock-loan file (borrow fee, rebate, shares available) as of the evening
 
 Every fetch is validated before it is kept; a source that is not published yet is reported, a malformed one fails loudly.
 """
@@ -14,7 +15,8 @@ import gzip
 import sys
 import urllib.error
 import urllib.request
-from datetime import date, timedelta
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Callable
 
@@ -28,6 +30,10 @@ FTD_URL = "https://www.sec.gov/files/data/fails-deliver-data/cnsfails{ym}{half}.
 FINRA_HEADER = "Date|Symbol|ShortVolume|ShortExemptVolume|TotalVolume|Market"
 FINRA_MIN_ROWS = 4000
 BACKFILL_DAYS = 45          # trading days of FINRA history kept on hand; the short-volume signal needs 20 plus margin
+SHORTSTOCK_HOST = "ftp2.interactivebrokers.com"      # public, user "shortstock", empty password (IBKR knowledge base article 2024)
+SHORTSTOCK_FILE = "usa.txt"
+SHORTSTOCK_HEADER = "#SYM|CUR|NAME|CON|ISIN|REBATERATE|FEERATE|AVAILABLE|FIGI|"
+SHORTSTOCK_MIN_ROWS = 5000
 FRED_SERIES = ("VIXCLS", "VXVCLS")
 FRED_MIN_ROWS = 500
 
@@ -114,6 +120,94 @@ def load_short_volume(day: date, snap: Path = SNAP) -> dict[str, tuple[float, fl
     return parse_short_volume(gzip.decompress(path.read_bytes()).decode("utf-8", "replace"))
 
 
+@dataclass(frozen=True)
+class Borrow:
+    """Stock-loan terms for one symbol. Rates are annualised percentages. None means the file said NA: unknown, never zero.
+    `capped` marks availability reported as '>N': at least N shares."""
+    rebate: float | None
+    fee: float | None
+    available: int | None
+    capped: bool
+
+
+def shortstock_file_date(text: str) -> date:
+    first = text.splitlines()[0] if text else ""
+    parts = first.split("|")
+    try:
+        if parts[0] != "#BOF":
+            raise ValueError(first)
+        return datetime.strptime(parts[1], "%Y.%m.%d").date()
+    except (ValueError, IndexError) as exc:
+        raise SnapshotError(f"short-stock file has no usable #BOF line: {first[:60]!r}") from exc
+
+
+def _rate(text: str) -> float | None:
+    return None if text in ("NA", "") else float(text)
+
+
+def parse_shortstock(text: str) -> dict[str, Borrow]:
+    """symbol -> Borrow. Fails loudly on a changed layout, a missing #BOF line or a truncated file."""
+    shortstock_file_date(text)
+    lines = text.splitlines()
+    if len(lines) < 2 or lines[1].strip() != SHORTSTOCK_HEADER:
+        raise SnapshotError(f"unexpected short-stock header: {lines[1][:80] if len(lines) > 1 else 'missing'}")
+    out: dict[str, Borrow] = {}
+    for ln in lines[2:]:
+        if ln.startswith("#") or not ln.strip():
+            continue
+        parts = ln.split("|")
+        if len(parts) < 8:
+            raise SnapshotError(f"bad short-stock row: {ln[:80]}")
+        capped = parts[7].startswith(">")
+        try:
+            avail = int(parts[7].lstrip(">")) if parts[7] not in ("NA", "") else None
+            out[parts[0]] = Borrow(_rate(parts[5]), _rate(parts[6]), avail, capped)
+        except ValueError as exc:
+            raise SnapshotError(f"bad short-stock row: {ln[:80]}") from exc
+    if len(out) < SHORTSTOCK_MIN_ROWS:
+        raise SnapshotError(f"short-stock file has only {len(out)} symbols; expected at least {SHORTSTOCK_MIN_ROWS} (truncated?)")
+    return out
+
+
+def ftp_shortstock() -> bytes:  # pragma: no cover - network
+    import ftplib
+    import io
+    try:
+        with ftplib.FTP(SHORTSTOCK_HOST, timeout=60) as ftp:
+            ftp.login("shortstock", "")
+            buf = io.BytesIO()
+            ftp.retrbinary(f"RETR {SHORTSTOCK_FILE}", buf.write)
+            return buf.getvalue()
+    except (ftplib.Error, OSError) as exc:
+        raise SnapshotError(f"ftp://{SHORTSTOCK_HOST}/{SHORTSTOCK_FILE}: {exc!r}") from exc
+
+
+def collect_shortstock(today: date, fetch: Callable[[], bytes] = ftp_shortstock, snap: Path = SNAP) -> str:
+    """Keep one point-in-time copy per day ('saved' or 'have'). The file is a live snapshot, so it must be dated today."""
+    folder = snap / "ibkr_shortstock"
+    target = folder / f"{today:%Y%m%d}.txt.gz"
+    if target.exists():
+        return "have"
+    raw = fetch()
+    text = raw.decode("utf-8", "replace")
+    file_day = shortstock_file_date(text)
+    if file_day != today:
+        raise SnapshotError(f"short-stock file is stale: dated {file_day}, expected {today}")
+    parse_shortstock(text)      # validate before keeping
+    folder.mkdir(parents=True, exist_ok=True)
+    partial = target.with_suffix(".partial")
+    partial.write_bytes(gzip.compress(raw))
+    partial.replace(target)
+    return "saved"
+
+
+def load_shortstock(day: date, snap: Path = SNAP) -> dict[str, Borrow] | None:
+    path = snap / "ibkr_shortstock" / f"{day:%Y%m%d}.txt.gz"
+    if not path.exists():
+        return None
+    return parse_shortstock(gzip.decompress(path.read_bytes()).decode("utf-8", "replace"))
+
+
 def collect_fred(fetch: Fetch = http_get, snap: Path = SNAP) -> list[str]:
     folder = snap / "fred"
     folder.mkdir(parents=True, exist_ok=True)
@@ -197,6 +291,10 @@ def main() -> int:  # pragma: no cover - entry point
     ftd = collect_ftd(today, sec_fetch)
     print(f"sec fails-to-deliver: {len(ftd['saved'])} saved, {len(ftd['have'])} already had, not yet published: {ftd['not_published']}")
     print(f"fred: {', '.join(collect_fred())} refreshed")
+    try:
+        print(f"ibkr short-stock file: {collect_shortstock(today)}")
+    except SnapshotError as exc:      # a stale or unreachable file must not stop the other sources, but it must be reported
+        problems.append(str(exc))
     if problems:
         print("[FAIL] " + "; ".join(problems), file=sys.stderr)
         return 1

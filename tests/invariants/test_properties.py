@@ -6,7 +6,7 @@ from types import SimpleNamespace as NS
 
 import pytest
 from fakes import CLOSED_NOW, OPEN_NOW, SPY, FakeIB, FakeTrade
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 from ib_async import LimitOrder, MarketOrder
 
@@ -52,6 +52,8 @@ def run_place(ib, order, *, equity=EQUITY, ref=REF, now=OPEN_NOW, mode=None, lim
 
 @PROFILE
 @given(side=sides, qty=quantities, limit=limit_prices, held=positions, rest=resting)
+@example(side="BUY", qty=500, limit=109.0, held=0, rest=[])      # fits the cap at the reference price (50,000), not at the limit (54,500)
+@example(side="BUY", qty=460, limit=109.0, held=0, rest=[])      # 46,000 at the reference, 50,140 at the limit
 def test_nothing_sent_is_ever_an_oversize_entry(side, qty, limit, held, rest):
     ib, order = fake_with(held, rest), None
     order = make_order(side, qty, limit)
