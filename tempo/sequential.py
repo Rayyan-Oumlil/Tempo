@@ -148,7 +148,12 @@ def render(rows: list[Evidence]) -> str:
 
 
 def main() -> int:  # pragma: no cover - entry point
-    print(render(analyse(Ledger().scores())))
+    from tempo.tradeable import tradeable_scores
+    ledger = Ledger()
+    kept, excluded = tradeable_scores(ledger.signals(), ledger.scores())
+    print(render(analyse(kept)))
+    if excluded:
+        print("left out, short with no shares to borrow: " + ", ".join(f"{k} {v}" for k, v in sorted(excluded.items())))
     return 0
 
 
