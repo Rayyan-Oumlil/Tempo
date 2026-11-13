@@ -139,7 +139,7 @@ def earnings_release(ticker: str, date: str) -> dict | None:
 
 
 if __name__ == "__main__":
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # filings contain characters a Windows console cannot show
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]  # filings contain characters a Windows console cannot show
     try:
         ticker = sys.argv[1]
         date = sys.argv[2] if len(sys.argv) > 2 else datetime.now(ZoneInfo("America/New_York")).date().isoformat()

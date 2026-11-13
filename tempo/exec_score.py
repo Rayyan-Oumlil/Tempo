@@ -68,14 +68,15 @@ def score_signal_exec(signal: dict, daily: Bars, bench_daily: Bars, intra: Intra
         return None
     entry_date, exit_date = daily.dates[entry], daily.dates[entry + horizon - 1]
     exit_time = exit_hhmm(date.fromisoformat(exit_date))
-    px = (intra.open_at(entry_date, ENTRY_HHMM), intra.open_at(exit_date, exit_time),
-          bench_intra.open_at(entry_date, ENTRY_HHMM), bench_intra.open_at(exit_date, exit_time))
-    if any(p is None for p in px):
+    entry_px = intra.open_at(entry_date, ENTRY_HHMM)
+    exit_px = intra.open_at(exit_date, exit_time)
+    bench_entry = bench_intra.open_at(entry_date, ENTRY_HHMM)
+    bench_exit = bench_intra.open_at(exit_date, exit_time)
+    if entry_px is None or exit_px is None or bench_entry is None or bench_exit is None:
         return None
     beta = beta_before(daily, bench_daily, entry_date)
     if beta is None:
         return None
-    entry_px, exit_px, bench_entry, bench_exit = px
     d = signal["direction"]
     cost = signal["features"].get("round_trip_cost", ROUND_TRIP_COST)
     ret = d * (exit_px / entry_px - 1)

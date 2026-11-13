@@ -46,8 +46,10 @@ def score_pending(ledger: Ledger, get_bars: Callable[[str], Bars | None], get_in
     fresh, waiting = [], 0
     for signal, horizon in todo:
         stock, stock_intra = bars_for(signal["symbol"]), intraday_for(signal["symbol"])
-        ready = None not in (stock, bench, stock_intra, bench_intra)
-        score = score_signal_exec(signal, stock, bench, stock_intra, bench_intra, horizon) if ready else None
+        if stock is None or bench is None or stock_intra is None or bench_intra is None:
+            waiting += 1
+            continue
+        score = score_signal_exec(signal, stock, bench, stock_intra, bench_intra, horizon)
         if score is None:
             waiting += 1
         else:
