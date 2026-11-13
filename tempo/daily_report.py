@@ -37,6 +37,8 @@ class Facts:
     disk_free_share: float
     collector_age_days: dict[str, float | None]
     ledger_counts: dict[str, int]
+    slippage_text: str = ""
+    slippage_alarms: tuple[str, ...] = ()
 
 
 def build(f: Facts) -> tuple[str, str]:
@@ -60,9 +62,12 @@ def build(f: Facts) -> tuple[str, str]:
             continue
         if age is None or age > max_age:
             problems.append(f"collector {name}: newest snapshot is {'missing' if age is None else f'{age:.0f} days old'}")
+    problems += [f"paper fills vs ledger: {a}" for a in f.slippage_alarms]
     lines = [f"Tempo daily report, {f.now:%Y-%m-%d %H:%M} ET", ""]
     lines += [f"PROBLEM: {p}" for p in problems] or ["Everything checked is fine."]
     lines += ["", "Ledger signals: " + ", ".join(f"{k} {v}" for k, v in sorted(f.ledger_counts.items()))]
+    if f.slippage_text:
+        lines += ["", "Paper fills vs ledger prices:", f.slippage_text]
     lines.append(f"Backup age: {'none' if f.backup_age_h is None else f'{f.backup_age_h:.0f} h'}; disk free {f.disk_free_share:.0%}")
     subject = f"Tempo daily: {len(problems)} PROBLEM(S)" if problems else "Tempo daily: all good"
     return subject, "\n".join(lines)
@@ -97,9 +102,14 @@ def gather(now: datetime, root: Path = ROOT) -> Facts:  # pragma: no cover - rea
                 continue
             if rec.get("kind") == "signal":
                 counts[rec["source"]] = counts.get(rec["source"], 0) + 1
+    try:
+        from tempo.slippage import report
+        slip_text, slip_alarms = report()
+    except Exception as exc:  # noqa: BLE001 - a broken report must be visible in the email, not silent
+        slip_text, slip_alarms = "", (f"the slippage report itself failed: {exc!r}",)
     return Facts(now, is_trading_day(now.date()), age, ok, lines,
                  None if newest is None else (now.timestamp() - newest.stat().st_mtime) / 3600,
-                 usage.free / usage.total, {n: _age_days(root / "data" / "snapshots" / n, now) for n, _, _ in COLLECTORS}, counts)
+                 usage.free / usage.total, {n: _age_days(root / "data" / "snapshots" / n, now) for n, _, _ in COLLECTORS}, counts, slip_text, tuple(slip_alarms))
 
 
 def main() -> int:  # pragma: no cover - entry point
