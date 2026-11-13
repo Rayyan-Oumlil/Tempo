@@ -9,8 +9,9 @@ Rules enforced here:
   * a signal is stamped with the system clock and cannot be edited or backdated (`backfill=True` records are kept
     for reference and excluded from evaluation);
   * one signal per (source, symbol, event_id);
-  * scoring enters at the open of the first trading day STRICTLY AFTER the signal's New York date, holds `horizon`
-    trading days, exits at the close, and is measured against SPY over the same days;
+  * scoring (method exec_v2, tempo/exec_score.py) enters at the 09:40 ET price of the first trading day STRICTLY AFTER
+    the signal's New York date, holds `horizon` trading days, exits at the 15:45 ET price, and is measured against beta
+    times SPY over the same times; rows written before the 2026-11-12 amendment have no method and never count;
   * no verdict is printed before MIN_SCORED scored signals exist for a source and horizon.
 
 Usage: python -m tempo.ledger            show counts and statistics per source and horizon
@@ -33,6 +34,7 @@ from tempo.overnight import t_statistic
 
 LEDGER_FILE = Path(__file__).resolve().parents[1] / "ledger" / "ledger.jsonl"
 HORIZONS = (1, 5, 21)
+METHOD = "exec_v2"   # scoring method that counts toward verdicts; earlier score rows have no method (see exec_score.py)
 ROUND_TRIP_COST = 0.0006  # assumed 3 bps per side; real slippage is unmeasured (see docs/research/log.md)
 MIN_SCORED = 30
 NEW_YORK = ZoneInfo("America/New_York")
@@ -65,15 +67,17 @@ class Ledger:
         return [r for r in self.journal.records() if r["kind"] == "signal" and (source is None or r["source"] == source)
                 and (include_backfill or not r["backfill"])]
 
-    def scores(self, source: str | None = None) -> list[dict]:
+    def scores(self, source: str | None = None, method: str | None = METHOD) -> list[dict]:
+        """Scores of this source's signals. By default only the current method counts; method=None returns every row."""
         wanted = {s["signal_id"] for s in self.signals(source)}
-        return [r for r in self.journal.records() if r["kind"] == "score" and r["signal_id"] in wanted]
+        return [r for r in self.journal.records() if r["kind"] == "score" and r["signal_id"] in wanted
+                and (method is None or r.get("method") == method)]
 
     def record_scores(self, scores: list[dict]) -> int:
         """Append scores not already recorded (one per signal and horizon). Returns how many were written."""
         with self.journal.lock():
-            done = {(r["signal_id"], r["horizon"]) for r in self.journal.records() if r["kind"] == "score"}
-            fresh = [s for s in scores if (s["signal_id"], s["horizon"]) not in done]
+            done = {(r["signal_id"], r["horizon"], r.get("method")) for r in self.journal.records() if r["kind"] == "score"}
+            fresh = [s for s in scores if (s["signal_id"], s["horizon"], s.get("method")) not in done]
             for s in fresh:
                 self.journal.append("score", **s)
             return len(fresh)
@@ -99,7 +103,7 @@ def score_signal(signal: dict, bars: Bars, bench: Bars, horizon: int) -> dict | 
 
 
 def unscored(ledger: Ledger, horizons: tuple[int, ...] = HORIZONS) -> list[tuple[dict, int]]:
-    done = {(r["signal_id"], r["horizon"]) for r in ledger.journal.records() if r["kind"] == "score"}
+    done = {(r["signal_id"], r["horizon"]) for r in ledger.journal.records() if r["kind"] == "score" and r.get("method") == METHOD}
     return [(s, h) for s in ledger.signals() for h in horizons if (s["signal_id"], h) not in done]
 
 

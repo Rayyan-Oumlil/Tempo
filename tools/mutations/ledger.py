@@ -11,7 +11,7 @@ M = [
     ("benchmark direction not applied", "bench_ret = d * (bench.close", "bench_ret = (bench.close"),
     ("net excess ignores the cost", "\"net_excess\": ret - bench_ret - cost, \"round_trip_cost\": cost}", "\"net_excess\": ret - bench_ret, \"round_trip_cost\": cost}"),
     ("per-source cost ignored", "cost = signal[\"features\"].get(\"round_trip_cost\", ROUND_TRIP_COST)", "cost = ROUND_TRIP_COST"),
-    ("scores not idempotent", "fresh = [s for s in scores if (s[\"signal_id\"], s[\"horizon\"]) not in done]", "fresh = list(scores)"),
+    ("scores not idempotent", "fresh = [s for s in scores if (s[\"signal_id\"], s[\"horizon\"], s.get(\"method\")) not in done]", "fresh = list(scores)"),
     ("verdict allowed too early", "if n < MIN_SCORED else", "if n < 1 else"),
     ("backfill not excluded", "(include_backfill or not r[\"backfill\"])", "True"),
     ("exit on the entry day", "exit_ = entry + horizon - 1", "exit_ = entry + horizon"),

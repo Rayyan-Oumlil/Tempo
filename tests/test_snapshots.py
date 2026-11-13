@@ -64,3 +64,56 @@ def test_ftd_must_be_a_zip(tmp_path):
         sn.collect_ftd(date(2026, 11, 11), lambda u: b"<html>", tmp_path)
     got = sn.collect_ftd(date(2026, 11, 11), lambda u: b"PK\x03\x04data", tmp_path)
     assert len(got["saved"]) == 4
+
+
+# --- IBKR short-stock file (borrow fee and availability, point in time) -------------------------------------------
+
+def shortstock_text(n=5200, day="2026.11.12", header=None):
+    head = header or sn.SHORTSTOCK_HEADER
+    rows = [f"S{i}|USD|NAME {i}|{1000 + i}|ISIN{i}|3.6300|0.2500|{1000 * (i + 1)}|FIGI{i}|" for i in range(n)]
+    rows += ["BIG|USD|BIG CO|1|ISIN|3.6021|0.2779|>10000000|FIGI|", "NOFEE|USD|NO FEE|2|ISIN|NA|NA|2000||",
+             "HARD|USD|HARD CO|3|ISIN|-34.1246|38.0046|8000|FIGI|"]
+    return f"#BOF|{day}|20:08:41\n{head}\n" + "\n".join(rows) + "\n#EOF|" + str(len(rows)) + "\n"
+
+
+def test_parse_shortstock_reads_fee_rebate_and_availability_and_the_capped_marker():
+    rows = sn.parse_shortstock(shortstock_text())
+    assert rows["S5"] == sn.Borrow(rebate=3.63, fee=0.25, available=6000, capped=False)
+    assert rows["BIG"] == sn.Borrow(rebate=3.6021, fee=0.2779, available=10_000_000, capped=True)      # ">10000000" means at least that
+    assert rows["NOFEE"] == sn.Borrow(rebate=None, fee=None, available=2000, capped=False)            # "NA" is unknown, never zero
+    assert rows["HARD"].fee == 38.0046 and rows["HARD"].rebate < 0
+
+
+@pytest.mark.parametrize("text", ["", shortstock_text(n=10), shortstock_text(header="#SYM|CUR|NAME"), "no|bof\n" + sn.SHORTSTOCK_HEADER],
+                         ids=["empty", "truncated", "changed-header", "no-bof-line"])
+def test_parse_shortstock_refuses_a_changed_or_truncated_file(text):
+    with pytest.raises(sn.SnapshotError):
+        sn.parse_shortstock(text)
+
+
+def test_the_file_date_comes_from_the_bof_line():
+    assert sn.shortstock_file_date(shortstock_text(day="2026.11.12")) == date(2026, 11, 12)
+    with pytest.raises(sn.SnapshotError):
+        sn.shortstock_file_date("#BOF|garbage|x\n")
+
+
+def test_shortstock_collection_saves_one_point_in_time_file_per_day(tmp_path):
+    calls = []
+
+    def fetch():
+        calls.append(1)
+        return shortstock_text().encode()
+
+    first = sn.collect_shortstock(date(2026, 11, 12), fetch, snap=tmp_path)
+    assert first == "saved" and (tmp_path / "ibkr_shortstock" / "20261112.txt.gz").exists()
+    assert sn.collect_shortstock(date(2026, 11, 12), fetch, snap=tmp_path) == "have" and len(calls) == 1   # not fetched twice
+    assert sn.load_shortstock(date(2026, 11, 12), snap=tmp_path)["BIG"].capped is True
+    assert sn.load_shortstock(date(2026, 11, 13), snap=tmp_path) is None
+
+
+def test_a_stale_or_malformed_shortstock_file_is_not_kept(tmp_path):
+    with pytest.raises(sn.SnapshotError, match="stale"):
+        sn.collect_shortstock(date(2026, 11, 12), lambda: shortstock_text(day="2026.11.10").encode(), snap=tmp_path)
+    with pytest.raises(sn.SnapshotError):
+        sn.collect_shortstock(date(2026, 11, 12), lambda: b"garbage", snap=tmp_path)
+    assert not list((tmp_path / "ibkr_shortstock").glob("*.txt.gz")) if (tmp_path / "ibkr_shortstock").exists() else True

@@ -85,3 +85,44 @@ def test_a_timeout_is_a_failure_and_an_empty_answer_is_not():
     assert fetch_news(FakeIB(result=None), 1) is None          # ib_async's silent timeout
     assert fetch_news(FakeIB(error=RuntimeError("x")), 1) is None
     assert fetch_news(FakeIB(result=[]), 1) == []              # a stock with no news is a real answer
+
+
+def test_the_target_is_parsed_when_present():
+    assert parse_headline("!Baird downgraded NVIDIA (NVDA) to Neutral with target $200")["target"] == 200.0
+    assert parse_headline("!Argus upgraded Boeing (BA) to Buy")["target"] is None
+    assert parse_headline("!X upgraded Y (YYY) to Buy with target $1,250.50")["target"] == 1250.5
+
+
+def test_actions_in_window_keeps_every_action_with_its_detail_and_agrees_with_direction_for():
+    from tempo.analyst_actions import actions_in_window
+    day = date(2026, 11, 10)
+    news = [(utc(2026, 11, 10, 12, 0), "!Baird downgraded NVIDIA (NVDA) to Neutral with target $200"),
+            (utc(2026, 11, 10, 13, 0), "!Melius downgraded NVIDIA (NVDA) to Hold with target $185"),
+            (utc(2026, 11, 10, 13, 5), "!Barclays upgraded Tesla (TSLA) to Overweight"),          # another stock
+            (utc(2026, 11, 9, 12, 0), "!Old downgraded NVIDIA (NVDA) to Sell")]                   # outside the window
+    got = actions_in_window("NVDA", news, day)
+    assert [(a["firm"], a["rating"], a["target"]) for a in got] == [("Baird", "Neutral", 200.0), ("Melius", "Hold", 185.0)]
+    assert direction_for("NVDA", news, day) == -1
+
+
+def test_signal_features_record_breadth_and_target_versus_price():
+    from tempo.analyst_actions import action_features
+    acts = [{"firm": "Baird", "rating": "Neutral", "target": 200.0, "direction": -1},
+            {"firm": "Melius", "rating": "Hold", "target": 185.0, "direction": -1},
+            {"firm": "Argus", "rating": "Sell", "target": None, "direction": -1}]
+    f = action_features(acts, close=173.73)
+    assert f["n_actions"] == 3 and f["firms"] == ["Baird", "Melius", "Argus"] and f["ratings"] == ["Neutral", "Hold", "Sell"]
+    assert f["targets"] == [200.0, 185.0, None]
+    assert f["target_vs_price"] == pytest.approx(((200 / 173.73 - 1) + (185 / 173.73 - 1)) / 2)   # mean over the targets given
+    assert action_features([{"firm": "A", "rating": "Buy", "target": None, "direction": 1}], close=10.0)["target_vs_price"] is None
+
+
+def test_record_signals_stores_the_action_detail_without_changing_the_registered_fields(tmp_path):
+    from tempo.analyst_actions import record_signals
+    from tempo.ledger import Ledger
+    ledger = Ledger(tmp_path / "l.jsonl")
+    hit = {"symbol": "NVDA", "direction": -1, "day": "2026-11-11", "close": 173.73, "adv20": 1.7e10,
+           "actions": [{"firm": "Baird", "rating": "Neutral", "target": 200.0, "direction": -1}]}
+    rec = record_signals([hit], ledger)[0]
+    assert rec["features"]["round_trip_cost"] == 0.002 and rec["features"]["adv20"] == 17000000000
+    assert rec["features"]["firms"] == ["Baird"] and rec["features"]["target_vs_price"] == pytest.approx(200 / 173.73 - 1)

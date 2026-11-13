@@ -124,7 +124,7 @@ def test_scores_are_written_once(tmp_path):
 def test_unscored_lists_what_is_still_to_do(tmp_path):
     ledger = make_ledger(tmp_path)
     s = sig(ledger)
-    ledger.record_scores([score_signal(s, STOCK, BENCH, 3)])
+    ledger.record_scores([{**score_signal(s, STOCK, BENCH, 3), "method": "exec_v2"}])
     todo = unscored(ledger, horizons=(1, 3, 5))
     assert [(x["signal_id"], h) for x, h in todo] == [(s["signal_id"], 1), (s["signal_id"], 5)]
 

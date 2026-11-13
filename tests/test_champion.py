@@ -112,7 +112,7 @@ def test_end_to_end_with_a_real_ledger(tmp_path):
         clock["t"] = day
         for source, ne in (("short_volume_v1", 0.001), ("short_volume_v2", 0.006)):
             sig = ledger.record_signal(source=source, symbol="AAA", direction=1, event_id=f"e{i}")
-            ledger.record_scores([{"signal_id": sig["signal_id"], "source": source, "symbol": "AAA", "horizon": 5, "entry_date": "x",
+            ledger.record_scores([{"method": "exec_v2", "signal_id": sig["signal_id"], "source": source, "symbol": "AAA", "horizon": 5, "entry_date": "x",
                                    "exit_date": "y", "ret": ne, "bench_ret": 0.0, "excess": ne, "net_excess": ne + (i % 3) * 1e-4,
                                    "round_trip_cost": 0.002}])
     assert len(daily_means(ledger, "short_volume_v1", 5)) == 35
