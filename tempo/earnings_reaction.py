@@ -19,7 +19,7 @@ from datetime import date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from tempo.daybars import vol20
+from tempo.daybars import DayBars, vol20
 from tempo.hours import add_trading_days, is_trading_day
 from tempo.ledger import Ledger, SignalRefused
 from tempo.snapshots import Borrow, context_features, load_shortstock
@@ -49,13 +49,6 @@ class Filing:
     accession: str
     items: tuple[str, ...]
     accepted: datetime
-
-
-@dataclass(frozen=True)
-class DayBars:
-    dates: list[str]
-    close: list[float]
-    volume: list[float]
 
 
 def parse_feed(atom: str) -> list[Filing]:
