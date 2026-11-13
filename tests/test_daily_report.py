@@ -49,3 +49,8 @@ def test_slippage_alarms_and_table_reach_the_email():
     subject, body = dr.build(dr.Facts(**GOOD, slippage_text="TABLE", slippage_alarms=("x: 80 bps",)))
     assert "1 PROBLEM" in subject and "PROBLEM: paper fills vs ledger: x: 80 bps" in body and "TABLE" in body
     assert dr.build(dr.Facts(**GOOD))[0] == "Tempo daily: all good"
+
+
+def test_gateway_login_trouble_is_a_problem_in_the_email():
+    subject, body = dr.build(dr.Facts(**GOOD, gateway_login=("Gateway login: 'Unrecognized Username or Password' x3 (first a, last b)",)))
+    assert "1 PROBLEM" in subject and "PROBLEM: Gateway login: 'Unrecognized Username or Password'" in body
