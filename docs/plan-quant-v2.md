@@ -243,8 +243,27 @@ T2125 business income at a high marginal rate; or the reconciled paper blend fai
 through February; over 80% that the project helps a quant or software career [J, his].
 
 **Next actions, in order** (none started):
-1. Write `tempo/events_scan.py`: read-only EDGAR full-text queries for SC TO-I, N-23c-3, DEFM14A and Form 10, count per year 2019 to 2026, CSV of
-   events with accession numbers; verify the endpoint and rate limits first. No orders.
+1. **DONE 2026-11-13: `tempo/events_scan.py`** (read-only, 9 tests; `python -m tempo.events_scan`). The full-text-search host `efts.sec.gov` answers
+   HTTP 403 to our client, so the scanner reads EDGAR's quarterly form index instead (every filing by form type, cached per completed quarter).
+   **Measured counts of original filings, 2019 to 2026 (2026 is partial):**
+
+   | Form | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 |
+   |---|---|---|---|---|---|---|---|---|
+   | SC TO-I (issuer tender) | 464 | 396 | 374 | 384 | 461 | 579 | 577 | 523 |
+   | of which name looks like a fund/trust | 357 | 310 | 297 | 276 | 347 | 455 | 476 | 426 |
+   | SC TO-I, name not fund-like | 107 | 86 | 77 | 108 | 114 | 124 | 101 | 97 |
+   | N-23C3A (interval-fund repurchase notice) | 240 | 265 | 272 | 326 | 358 | 412 | 523 | 555 |
+   | 10-12B (Form 10, spin-off or new registrant) | 36 | 16 | 20 | 20 | 19 | 17 | 8 | 19 |
+   | DEFM14A (definitive merger proxy) | 221 | 179 | 311 | 246 | 215 | 257 | 235 | 234 |
+   | SC 13E3 (going-private) | 25 | 49 | 36 | 43 | 48 | 49 | 35 | 28 |
+
+   **What this already says (my reading, [J]):** the raw counts overstate the opportunity. Most "fund-like" tenders and all N-23C3A notices are
+   **non-traded interval or private-credit funds** (no exchange price to trade), and even the "not fund-like" rows include private BDCs
+   (2026 sample: Audax Credit BDC, TCW Direct Lending, Apollo Debt Solutions) next to real listed names (Yext, Palo Alto, Wix, iQIYI). The tradable set (listed
+   issuer tenders, listed CEF tenders, listed SPAC proxies) is a fraction of these numbers and is **not yet measured**; the reviewer's
+   "about 20 to 50 events a year" assumption cannot be confirmed or rejected from form counts alone. Spin-offs: 8 to 36 Form 10 filings a year in total,
+   so a spin-off sample is small by construction. **Next step to size it properly:** join each CIK to its SIC code and exchange listing from
+   `data.sec.gov/submissions` (about 0.25 s per CIK) and count only listed names. Event data lives in `data/events/events.csv` (not committed).
 2. Log `usa.txt` fee, shortable and availability on every small-cap signal; add USD/CAD rate to each fill record.
 3. Three questions to IBKR by Web Ticket: Section 302(b)(3) withholding on a Canadian W-8BEN tender; withholding on SGOV (871(k)); whether paper accounts
    can exercise corporate actions.
