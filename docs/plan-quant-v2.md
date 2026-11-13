@@ -264,6 +264,25 @@ through February; over 80% that the project helps a quant or software career [J,
    "about 20 to 50 events a year" assumption cannot be confirmed or rejected from form counts alone. Spin-offs: 8 to 36 Form 10 filings a year in total,
    so a spin-off sample is small by construction. **Next step to size it properly:** join each CIK to its SIC code and exchange listing from
    `data.sec.gov/submissions` (about 0.25 s per CIK) and count only listed names. Event data lives in `data/events/events.csv` (not committed).
+
+   **Listed-names measurement (2026-11-13, `python -m tempo.events_scan enrich`, 2,777 filers joined to current SIC and exchange).** The exchange
+   field describes the filer **today**, so counts are a lower bound for mergers (an acquired target no longer lists) and for liquidated SPACs.
+
+   | Filed by a filer listed on a US exchange today | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 |
+   |---|---|---|---|---|---|---|---|---|
+   | SC TO-I (all) | 79 | 72 | 67 | 59 | 77 | 117 | 61 | 47 |
+   | of which operating companies (entity type) | 51 | 44 | 39 | 37 | 39 | 45 | 25 | 21 |
+   | DEFM14A (lower bound) | 22 | 27 | 47 | 42 | 23 | 42 | 39 | 97 |
+   | 10-12B | 9 | 8 | 15 | 17 | 11 | 12 | 7 | 13 |
+   | SC 13E3 | 3 | 2 | 9 | 3 | 4 | 6 | 2 | 13 |
+
+   **Reading ([J]):** listing cuts SC TO-I from about 460 to about 60 a year. 301 of the 579 listed tenders are operating companies (207 distinct
+   issuers; 21 to 51 a year), 275 are funds with blank SIC (about 35 a year, the closed-end-fund candidates). Both groups are **below the
+   40 to 50 events a year the reviewer's economics needed**, and an SC TO-I includes tenders that are not odd-lot or not priced
+   to be attractive (option exchanges, large buybacks). Spin-offs: 7 to 17 listed Form 10 filers a year. Conclusion for the decision memo:
+   structural events cannot be a **frequent** source of paid trades at this scale; they stay a passive watch list (capture each listed tender with
+   its terms and price) and do not displace the automated sleeves. A filing-level classification (odd-lot clause, price vs market) is the next
+   cheap step and needs the document text, not the index.
 2. Log `usa.txt` fee, shortable and availability on every small-cap signal; add USD/CAD rate to each fill record.
 3. Three questions to IBKR by Web Ticket: Section 302(b)(3) withholding on a Canadian W-8BEN tender; withholding on SGOV (871(k)); whether paper accounts
    can exercise corporate actions.
