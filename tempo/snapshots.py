@@ -83,7 +83,8 @@ def parse_short_volume(text: str) -> dict[str, tuple[float, float]]:
 
 
 def trading_days_back(today: date, n: int) -> list[date]:
-    out, d = [], today
+    out: list[date] = []
+    d = today
     while len(out) < n:
         if is_trading_day(d):
             out.append(d)
