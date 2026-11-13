@@ -220,3 +220,20 @@ def test_the_10b5_1_flag_written_as_true_is_ignored_too():
 def test_placeholder_tickers_are_not_symbols():
     from tempo.insider import PLACEHOLDER_SYMBOLS, SYMBOL
     assert "NONE" in PLACEHOLDER_SYMBOLS and SYMBOL.match("NONE")   # the regex alone lets it through; the set stops it
+
+
+def test_sec_closed_on_veterans_and_columbus_day_only():
+    from datetime import date
+    from tempo.insider import sec_closed
+    assert sec_closed(date(2026, 11, 11)) and sec_closed(date(2026, 10, 12))
+    assert sec_closed(date(2027, 11, 11)) is True            # Thursday
+    assert sec_closed(date(2026, 11, 10)) is False and sec_closed(date(2026, 10, 19)) is False
+    assert sec_closed(date(2025, 11, 11)) is True and sec_closed(date(2025, 11, 10)) is False  # Tuesday
+
+
+def test_process_day_skips_the_fetch_when_the_sec_is_closed(tmp_path):
+    from datetime import date
+    from tempo.insider import process_day
+    def boom(url): raise AssertionError("must not fetch")
+    out = process_day(date(2026, 11, 11), fetcher=boom, cache=tmp_path / "c.jsonl", say=lambda m: None)
+    assert out == {"filings": 0, "new": 0, "purchases": 0, "failed": 0}

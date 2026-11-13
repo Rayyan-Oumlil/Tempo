@@ -149,9 +149,22 @@ def _append(path: Path, records: list[dict]) -> None:
         f.writelines(json.dumps(r) + "\n" for r in records)
 
 
+def sec_closed(day: date) -> bool:
+    """Federal holidays on which the SEC publishes nothing (EDGAR answers 403) although the US stock market is open:
+    Columbus Day (2nd Monday of October) and Veterans Day (Nov 11, observed on the nearest weekday)."""
+    if day.month == 10 and day.weekday() == 0 and 8 <= day.day <= 14:
+        return True
+    veterans = date(day.year, 11, 11)
+    observed = veterans - timedelta(days=1) if veterans.weekday() == 5 else veterans + timedelta(days=1) if veterans.weekday() == 6 else veterans
+    return day == observed
+
+
 def process_day(day: date, fetcher=fetch, cache: Path = CACHE, say=print) -> dict:
     """Download and parse every Form 4 filed on `day` that is not already cached. A filing that fails is NOT marked
-    as seen, so the next run retries it."""
+    as seen, so the next run retries it. A day the SEC is closed has no index: nothing was filed, nothing to fetch."""
+    if sec_closed(day):
+        say(f"  {day}: SEC closed (federal holiday), no filings to read")
+        return {"filings": 0, "new": 0, "purchases": 0, "failed": 0}
     quarter = (day.month - 1) // 3 + 1
     index = fetcher(f"https://www.sec.gov/Archives/edgar/daily-index/{day.year}/QTR{quarter}/form.{day:%Y%m%d}.idx")
     rows = parse_index(index)
