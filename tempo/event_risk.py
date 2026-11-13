@@ -27,7 +27,7 @@ CATEGORIES: dict[str, tuple[str, ...]] = {
     "halt": (r"halted", r"trading halt", r"suspends? trading"),
     "executive": (r"resign\w*", r"steps? down", r"ousted", r"fired", r"CEO (?:exit|departure|change)", r"names? new CEO",
                   r"abruptly (?:leaves|departs)"),
-    "mna": (r"to acquire", r"acquires", r"takeover", r"buyout", r"merger", r"agrees to be (?:bought|acquired)", r"tender offer", r"bid for"),
+    "mna": (r"to acquire", r"acquires(?! [\d,]+ of)", r"takeover", r"buyout", r"merger", r"agrees to be (?:bought|acquired)", r"tender offer", r"bid for"),
     "probe": (r"SEC (?:probe|investigation|subpoena)", r"DOJ", r"investigation", r"subpoena", r"class action", r"short[- ]seller report"),
     "failure": (r"bankruptcy", r"chapter 11", r"going concern", r"delisting", r"delisted", r"defaults?", r"restat\w*", r"fraud"),
 }
