@@ -1,6 +1,7 @@
 """Daily bars with volume, the liquidity filter shared by the evening sources, and the frozen universe file."""
 from __future__ import annotations
 
+import statistics
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,15 @@ class DayBars:
     volume: list[float]
 
 
+def vol20(bars: DayBars, i: int) -> float | None:
+    """Standard deviation of the 20 daily returns that end the session BEFORE bar i (the event day is excluded on purpose: this is the
+    state going into the event, a conditioning feature, not the event). None if fewer than 21 closes exist."""
+    if i < ADV_DAYS + 1:
+        return None
+    closes = bars.close[i - ADV_DAYS - 1:i]
+    return statistics.stdev(closes[n] / closes[n - 1] - 1 for n in range(1, len(closes)))
+
+
 def liquid(bars: DayBars, day: str) -> dict[str, Any]:
     """Close of `day` and the average dollar volume of the 20 sessions before it; status ok/no_bar/short_history/filtered."""
     if day not in bars.dates:
@@ -27,7 +37,7 @@ def liquid(bars: DayBars, day: str) -> dict[str, Any]:
         return {"status": "short_history"}
     adv = sum(bars.close[n] * bars.volume[n] for n in range(i - ADV_DAYS, i)) / ADV_DAYS
     close = bars.close[i]
-    return {"status": "ok" if close >= MIN_PRICE and adv >= MIN_ADV else "filtered", "close": close, "adv20": adv}
+    return {"status": "ok" if close >= MIN_PRICE and adv >= MIN_ADV else "filtered", "close": close, "adv20": adv, "vol20": vol20(bars, i)}
 
 
 def day_bars(ib, symbol: str, duration: str = "3 M") -> DayBars | None:  # pragma: no cover - IBKR

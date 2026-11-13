@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 from tempo.daybars import DayBars, day_bars, liquid, load_universe
 from tempo.hours import is_trading_day
 from tempo.ledger import Ledger, SignalRefused
+from tempo.snapshots import Borrow, context_features, load_shortstock
 
 SOURCE = "weekly_reversal_v1"
 UNIVERSE = "evidence/universe_sp500_20261111.txt"
@@ -58,13 +59,15 @@ def pick(moves: dict[str, float], n: int = N_EACH) -> tuple[list[str], list[str]
     return longs, shorts
 
 
-def record_signals(longs: list[str], shorts: list[str], info: dict[str, dict], day: date, ledger: Ledger) -> list[dict]:
+def record_signals(longs: list[str], shorts: list[str], info: dict[str, dict], day: date, ledger: Ledger,
+                   borrow: dict[str, Borrow] | None = None) -> list[dict]:
     recorded = []
     for symbol, direction in [(s, 1) for s in longs] + [(s, -1) for s in shorts]:
         try:
             recorded.append(ledger.record_signal(
                 source=SOURCE, symbol=symbol, direction=direction, event_id=day.strftime("%Y%m%d"), price=info[symbol]["close"],
-                features={"round_trip_cost": ROUND_TRIP_COST, "r5": round(info[symbol]["r5"], 5)}))
+                features={"round_trip_cost": ROUND_TRIP_COST, "r5": round(info[symbol]["r5"], 5),
+                          **context_features(info[symbol], borrow, symbol)}))
         except SignalRefused:
             continue
     return recorded
@@ -96,9 +99,9 @@ def run(now: datetime, ib, ledger: Ledger, say=print) -> int:  # pragma: no cove
             counts["short_history"] += 1
             continue
         counts["scorable"] += 1
-        info[symbol] = {"close": m["close"], "r5": move}
+        info[symbol] = {"close": m["close"], "r5": move, "vol20": m["vol20"]}
     longs, shorts = pick({s: v["r5"] for s, v in info.items()})
-    recorded = record_signals(longs, shorts, info, day, ledger)
+    recorded = record_signals(longs, shorts, info, day, ledger, load_shortstock(day))
     say(f"weekly reversal {day}: {counts}; new signals recorded: {len(recorded)}")
     for r in recorded:
         say(f"  {r['symbol']:<6} {'LONG ' if r['direction'] == 1 else 'SHORT'} r5 {r['features']['r5']:+.1%}")
