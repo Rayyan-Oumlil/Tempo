@@ -6,22 +6,35 @@ more, a short receiving less. This is the first-day lesson made permanent (paper
 
 Read-only. Usage: python -m tempo.slippage            (prints the per-source table and any alarm)
 Alarm (plan A1): mean ABSOLUTE entry gap above ALARM_BPS over the last ALARM_MIN_TRADES entries of any one source.
+Late entries (for instance the day the Gateway was down and the 15:00 final run entered 29 trades six hours late, 2026-11-13) measure
+the outage, not the execution: they are counted and shown separately and kept out of the means and the alarm.
 A trade whose signal has no exec_v2 score at its horizon yet is counted as pending, never guessed.
 """
 from __future__ import annotations
 
 import sys
 from collections import defaultdict
+from datetime import datetime, time
+from zoneinfo import ZoneInfo
 
 from tempo.ledger import Ledger
 from tempo.paper_run import HORIZONS, PAPER_FILE, load_state
 
 ALARM_BPS = 60.0
 ALARM_MIN_TRADES = 20
+LATE_AFTER_MIN = 30        # an entry more than this many minutes after the 09:40 reference is LATE: reported apart, never in the alarm
+ET = ZoneInfo("America/New_York")
+REFERENCE = time(9, 40)
 
 
 def _bps(x: float) -> float:
     return x * 1e4
+
+
+def entry_delay_min(ts: float, entry_date: str) -> float:
+    """Minutes between the 09:40 ET reference on `entry_date` and the moment the entry was journaled (negative: before it)."""
+    ref = datetime.combine(datetime.fromisoformat(entry_date).date(), REFERENCE, tzinfo=ET)
+    return (datetime.fromtimestamp(ts, ET) - ref).total_seconds() / 60
 
 
 def trade_gaps(state: dict[str, dict], scores: list[dict]) -> tuple[list[dict], int, list[str]]:
@@ -43,7 +56,9 @@ def trade_gaps(state: dict[str, dict], scores: list[dict]) -> tuple[list[dict], 
         entry_gap = _bps(d * (t["fill_price"] - score["entry_px"]) / score["entry_px"])
         exit_fill = t.get("exit_fill_price")
         exit_gap = None if not exit_fill else _bps(-d * (exit_fill - score["exit_px"]) / score["exit_px"])
+        delay = entry_delay_min(t["ts"], score["entry_date"])        # every journaled entry has a ts: a missing one is corruption
         rows.append({"signal_id": sid, "source": source, "symbol": t["symbol"], "entry_gap_bps": entry_gap, "exit_gap_bps": exit_gap,
+                     "delay_min": delay, "late": delay > LATE_AFTER_MIN,
                      "entry_day": score["entry_date"], "vs_reference_bps": _bps(d * (t["fill_price"] - t["ref_price"]) / t["ref_price"])})
     rows.sort(key=lambda r: (r["entry_day"], r["signal_id"]))
     return rows, pending, sorted(unknown)
@@ -54,11 +69,18 @@ def summarize(rows: list[dict]) -> dict[str, dict]:
     by_source: dict[str, list[dict]] = defaultdict(list)
     for r in rows:
         by_source[r["source"]].append(r)
-    for source, rs in sorted(by_source.items()):
+    for source, all_rs in sorted(by_source.items()):
+        rs = [r for r in all_rs if not r["late"]]
+        late = [r["entry_gap_bps"] for r in all_rs if r["late"]]
+        if not rs:
+            out[source] = {"n": 0, "late_n": len(late), "late_abs": sum(abs(x) for x in late) / len(late), "entry_mean": None,
+                           "entry_abs": None, "exit_n": 0, "exit_mean": None, "last_abs": None}
+            continue
         entry = [r["entry_gap_bps"] for r in rs]
         exits = [r["exit_gap_bps"] for r in rs if r["exit_gap_bps"] is not None]
         last = entry[-ALARM_MIN_TRADES:]
-        out[source] = {"n": len(rs), "entry_mean": sum(entry) / len(entry), "entry_abs": sum(abs(x) for x in entry) / len(entry),
+        out[source] = {"n": len(rs), "late_n": len(late), "late_abs": sum(abs(x) for x in late) / len(late) if late else None,
+                       "entry_mean": sum(entry) / len(entry), "entry_abs": sum(abs(x) for x in entry) / len(entry),
                        "exit_n": len(exits), "exit_mean": sum(exits) / len(exits) if exits else None,
                        "last_abs": sum(abs(x) for x in last) / len(last) if len(entry) >= ALARM_MIN_TRADES else None}
     return out
@@ -71,12 +93,16 @@ def alarms(summary: dict[str, dict]) -> list[str]:
 
 def render(rows: list[dict], pending: int, unknown: list[str] | None = None) -> tuple[str, list[str]]:
     summary = summarize(rows)
-    lines = [f"{'source':22} {'n':>3} {'entry mean':>10} {'entry |gap|':>11} {'exits':>5} {'exit mean':>9}   (bps, positive = worse than the ledger)"]
+    lines = [f"{'source':22} {'n':>3} {'entry mean':>10} {'entry |gap|':>11} {'exits':>5} {'exit mean':>9} {'late':>5}   (bps, positive = worse than the ledger)"]
     for src, s in summary.items():
         em = "-" if s["exit_mean"] is None else f"{s['exit_mean']:+.0f}"
-        lines.append(f"{src:22} {s['n']:>3} {s['entry_mean']:>+10.0f} {s['entry_abs']:>11.0f} {s['exit_n']:>5} {em:>9}")
+        mean = "-" if s["entry_mean"] is None else f"{s['entry_mean']:+.0f}"
+        gap = "-" if s["entry_abs"] is None else f"{s['entry_abs']:.0f}"
+        late = "" if not s["late_n"] else f"{s['late_n']} ({s['late_abs']:.0f})"
+        lines.append(f"{src:22} {s['n']:>3} {mean:>10} {gap:>11} {s['exit_n']:>5} {em:>9} {late:>5}")
     if not summary:
         lines.append("no paper trade has an exec_v2 score yet")
+    lines.append(f"late = entered more than {LATE_AFTER_MIN} min after 09:40, count (mean |gap| bps), kept out of the means and the alarm")
     lines.append(f"{pending} entered trade(s) still waiting for a score; alarm needs {ALARM_MIN_TRADES} scored entries in one source")
     problems = alarms(summary) + [f"{s}: traded in the paper account but has no horizon in paper_run.HORIZONS, so its fills cannot be checked" for s in unknown or []]
     return "\n".join(lines), problems
