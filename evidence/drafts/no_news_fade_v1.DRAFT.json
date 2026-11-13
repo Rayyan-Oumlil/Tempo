@@ -1,0 +1,31 @@
+{
+ "_status": "DRAFT 2026-11-13. NOT registered, NOT collected. See news_drift_v1.DRAFT.json: same rules about editing, same twin relationship.",
+ "purpose": "Does a large one-day move WITHOUT news and WITHOUT a sector reason partly reverse over 5 days (liquidity-driven moves mean-revert; Chan 2003 covers small caps, the large-cap test is the new part)? Leg 2 of plan B4. Together the two legs replace weekly_reversal_v1.",
+ "source_name": "no_news_fade_v1",
+ "universe": "evidence/universe_sp500_20261111.txt",
+ "event_rule": "At the close of the signal day: stock return minus SPY at least +5% or at most -5%, AND no company headline in the window of news_drift_v1 (same providers, same text rule), AND the stock's return minus its sector ETF's return has the SAME sign and a size of at least 4%. The sector residual removes sympathy moves (AMD falls because NVDA guided down: no AMD headline, yet fundamental).",
+ "signal_rule": "Direction opposes the move: a rise gives short (-1), a fall gives long (+1). Same liquidity filter and emission as news_drift_v1.",
+ "cost_assumption": "round_trip_cost 0.002.",
+ "ledger": "horizons 1, 5, 21; primary horizon 5; exec_v2.",
+ "full_test": {
+  "minimum_scored_signals_at_primary_horizon": 100,
+  "pass_all_of": [
+   "mean net excess at 5 days above 0.3% after cost",
+   "t-statistic above the same written bar as news_drift_v1",
+   "positive mean net excess in both chronological halves",
+   "fewer than 10% unscorable 30 trading days after the horizon"
+  ],
+  "reported_not_criteria": ["confidence interval", "long and short separately", "VIX level at the signal (Nagel condition, logged)", "result with and without the sector residual condition"]
+ },
+ "open_choices": [
+  "1. Sector ETF map: nothing in the repo or in free point-in-time data maps a stock to a sector ETF. Options: (a) SIC code from the EDGAR submissions API (tempo.events_scan already caches it for event filers) mapped to the 11 SPDR sector ETFs by a table written now and frozen; coarse, wrong for conglomerates; (b) GICS sector from a public S&P 500 constituents file, mapped once to the SPDR ETFs, frozen with the universe. Recommended: (b), because the universe is already a frozen S&P 500 list.",
+  "2. Same headline-window and provider choices as news_drift_v1 (its open_choices 2).",
+  "3. Whether the 4% residual should be a fixed number or scaled by the stock's own 20-day volatility (vol20 is now logged on every signal): fixed is simpler and was the plan's wording."
+ ],
+ "known_limits": [
+  "The absence of a headline in three feeds is not the absence of news: a missed story makes a fundamental move look like a liquidity move, and the fade then loses.",
+  "Long signals after a fall are the dangerous side if the news was simply not in these feeds."
+ ],
+ "if_fail": "Report it as a failure; weekly_reversal_v1 stays as the only reversal test.",
+ "if_pass": "Not proof and not real money: second period, realistic-size execution check, then evidence/gate.json."
+}
