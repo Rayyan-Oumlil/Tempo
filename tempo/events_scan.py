@@ -7,12 +7,18 @@ filing by form type. (The full-text-search host efts.sec.gov answers 403 to this
 quarter is cached under data/events/index/ and never fetched twice; the running quarter is re-fetched every time.
 The company-name hint (`fund_like`) is a crude regex, not a classification; a SIC lookup is a later step.
 
-Usage: python -m tempo.events_scan [FIRST_YEAR]   (default 2019) -> data/events/events.csv and a per-year table.
+`enrich` adds each filer's current SIC code, tickers and exchanges from data.sec.gov/submissions (cached in
+data/events/cik_meta.json). Those fields describe the filer TODAY: a target acquired since its merger proxy, or a
+liquidated SPAC, shows no exchange, so the "listed" counts are a lower bound for mergers and SPAC-like events.
+
+Usage: python -m tempo.events_scan [FIRST_YEAR]    (default 2019) -> data/events/events.csv and a per-year table.
+       python -m tempo.events_scan enrich          fill data/events/cik_meta.json for the CIKs in events.csv (resumable).
 """
 from __future__ import annotations
 
 import csv
 import gzip
+import json
 import re
 import sys
 from collections import Counter
@@ -30,6 +36,10 @@ FIRST_YEAR = 2019
 WATCH = ("SC TO-I", "10-12B", "DEFM14A", "SC 13E3", "N-23C3A", "N-23C3B", "N-23C-3")
 FUND_HINT = re.compile(r"\b(fund|trust|portfolio|strategies|partners|opportunit\w*|income)\b", re.IGNORECASE)
 ROW = re.compile(r"^(?P<form>\S.*?)\s{2,}(?P<name>.+?)\s+(?P<cik>\d{1,10})\s+(?P<filed>\d{4}-\d{2}-\d{2})\s+(?P<path>\S+)\s*$")
+META = Path("data/events/cik_meta.json")
+LISTED = frozenset({"NYSE", "Nasdaq", "NYSE American", "NYSE Arca", "Cboe BZX", "CBOE"})
+ENRICH_FORMS = ("SC TO-I", "DEFM14A", "10-12B", "SC 13E3")
+SUBMISSIONS = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
 FIELDS = ("form", "filed", "cik", "company", "accession", "fund_like")
 
 
@@ -110,8 +120,44 @@ def write_csv(events: list[dict], path: Path = OUT) -> None:
         w.writerows(events)
 
 
+def fetch_meta(cik: str, fetch: Callable[[str], str] = edgar.fetch) -> dict:
+    try:
+        j = json.loads(fetch(SUBMISSIONS.format(cik=int(cik))))
+    except edgar.EdgarError as exc:
+        return {"error": str(exc)}
+    return {"sic": j.get("sic"), "sic_desc": j.get("sicDescription"), "tickers": j.get("tickers") or [],
+            "exchanges": [x for x in (j.get("exchanges") or []) if x], "entity": j.get("entityType")}
+
+
+def is_listed(meta: dict) -> bool:
+    return bool(LISTED & set(meta.get("exchanges") or []))
+
+
+def enrich(ciks: Iterable[str], fetch: Callable[[str], str] = edgar.fetch, path: Path = META, save_every: int = 100) -> dict[str, dict]:
+    """Fill the metadata cache for every CIK not yet fetched OK (earlier errors are retried). Resumable: saves as it goes."""
+    meta: dict[str, dict] = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    todo = [c for c in sorted(set(ciks), key=int) if "sic" not in meta.get(c, {})]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    for n, cik in enumerate(todo, 1):
+        meta[cik] = fetch_meta(cik, fetch)
+        if n % save_every == 0:
+            path.write_text(json.dumps(meta), encoding="utf-8")
+    path.write_text(json.dumps(meta), encoding="utf-8")
+    return meta
+
+
+def listed_per_year(events: list[dict], meta: dict[str, dict]) -> dict[str, Counter]:
+    table: dict[str, Counter] = {}
+    for e in events:
+        if is_listed(meta.get(e["cik"], {})):
+            table.setdefault(e["form"], Counter())[e["filed"][:4]] += 1
+    return table
+
+
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
+    if args and args[0] == "enrich":
+        return main_enrich()
     first = int(args[0]) if args else FIRST_YEAR
     events = scan(first, date.today())
     write_csv(events)
@@ -124,6 +170,23 @@ def main(argv: list[str] | None = None) -> int:
     print(f"{'TO-I fund?':10} " + " ".join(f"{fund[y]:>6}" for y in years) + "   (name hint only)")
     print(f"{len(events)} events -> {OUT}")
     return 0
+
+
+def main_enrich() -> int:
+    events = list(csv.DictReader(OUT.open(encoding="utf-8")))
+    ciks = {e["cik"] for e in events if e["form"] in ENRICH_FORMS}
+    meta = enrich(ciks)
+    bad = [c for c in ciks if "sic" not in meta[c]]
+    for e in events:
+        e["fund_like"] = e["fund_like"] == "True"
+    table = listed_per_year([e for e in events if e["form"] in ENRICH_FORMS], meta)
+    years = sorted({y for c in table.values() for y in c})
+    print("filer listed on a US exchange TODAY (lower bound for mergers):")
+    print(f"{'form':10} " + " ".join(f"{y:>6}" for y in years))
+    for form in ENRICH_FORMS:
+        print(f"{form:10} " + " ".join(f"{table.get(form, Counter())[y]:>6}" for y in years))
+    print(f"{len(ciks)} filers, {len(bad)} without metadata (rerun to retry)")
+    return 1 if bad else 0
 
 
 if __name__ == "__main__":

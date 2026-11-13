@@ -42,3 +42,16 @@ def test_the_registration_file_matches_the_code():
     reg = json.loads((Path(__file__).resolve().parents[1] / "evidence" / "earnings_reaction_small_forward.json").read_text(encoding="utf-8"))
     assert reg["source_name"] == small.SOURCE and "0.006" in reg["cost_assumption"]
     assert "500,000" in reg["liquidity_band"] and "3.00" in reg["liquidity_band"]
+
+
+def test_borrow_terms_are_logged_beside_the_signal_and_missing_data_is_not_a_zero_fee(tmp_path):
+    from tempo.snapshots import Borrow
+    ledger = make_ledger(tmp_path)
+    hit = {"symbol": "AAA", "direction": -1, "day": "2026-11-11", "reaction": -0.07, "close": 4.2, "adv20": 750_000.0, "accession": "x"}
+    table = {"AAA": Borrow(rebate=-33.0, fee=38.0, available=100_000, capped=True)}
+    got = small.record_signals([hit, {**hit, "symbol": "BBB"}], ledger, table)
+    assert got[0]["features"]["borrow_fee"] == 38.0 and got[0]["features"]["borrow_available"] == 100_000
+    assert got[0]["features"]["borrow_capped"] is True and got[0]["features"]["borrow_known"] is True
+    assert got[1]["features"] == {**got[1]["features"], "borrow_known": False} and "borrow_fee" not in got[1]["features"]
+    assert small.borrow_features("AAA", None) == {"borrow_known": False}
+    assert small.borrow_features("NA", {"NA": Borrow(None, None, None, False)})["borrow_fee"] is None

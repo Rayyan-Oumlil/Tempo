@@ -16,6 +16,7 @@ from typing import Any
 from tempo.earnings_reaction import (CLOSE, ET, MIN_ADV as LARGE_MIN_ADV, RECORD_AFTER, RESIGNAL_DAYS, THRESHOLD, _day_bars,
                                      _filings_since, _previous_trading_day, _ticker_for_cik, events_for, measure, ready_to_record)
 from tempo.ledger import Ledger, SignalRefused
+from tempo.snapshots import Borrow, load_shortstock
 
 SOURCE = "earnings_reaction_small_v1"
 MIN_PRICE = 3.0
@@ -38,7 +39,17 @@ def decide(m: dict) -> int | None:
     return None
 
 
-def record_signals(hits: list[dict], ledger: Ledger) -> list[dict]:
+def borrow_features(symbol: str, table: dict[str, Borrow] | None) -> dict:
+    """Stock-loan facts logged beside a signal (never used to filter it: the fee veto is a later, pre-registered test).
+    A missing file or symbol is recorded as such, not as a zero fee."""
+    b = table.get(symbol) if table else None
+    if b is None:
+        return {"borrow_known": False}
+    return {"borrow_known": True, "borrow_fee": b.fee, "borrow_rebate": b.rebate, "borrow_available": b.available,
+            "borrow_capped": b.capped}
+
+
+def record_signals(hits: list[dict], ledger: Ledger, borrow: dict[str, Borrow] | None = None) -> list[dict]:
     today = datetime.fromtimestamp(ledger.journal.now(), ET).date()
     recent = {s["symbol"] for s in ledger.signals(SOURCE, include_backfill=True)
               if (today - date.fromisoformat(s["date_et"])).days < RESIGNAL_DAYS}
@@ -50,7 +61,7 @@ def record_signals(hits: list[dict], ledger: Ledger) -> list[dict]:
             recorded.append(ledger.record_signal(
                 source=SOURCE, symbol=h["symbol"], direction=h["direction"], event_id=h["day"].replace("-", ""), price=h["close"],
                 features={"round_trip_cost": ROUND_TRIP_COST, "reaction": round(h["reaction"], 5), "adv20": round(h["adv20"]),
-                          "accession": h["accession"]}))
+                          "accession": h["accession"], **borrow_features(h["symbol"], borrow)}))
             recent.add(h["symbol"])
         except SignalRefused:
             continue
@@ -90,7 +101,7 @@ def run(now: datetime, ib, ledger: Ledger, fetcher, say=print) -> int:  # pragma
         counts["signal"] += 1
         hits.append({"symbol": symbol, "direction": direction, "day": day.isoformat(), "reaction": m["reaction"],
                      "close": m["close"], "adv20": m["adv20"], "accession": f.accession})
-    recorded = record_signals(hits, ledger)
+    recorded = record_signals(hits, ledger, load_shortstock(day))
     say(f"small-cap earnings reactions {day}: {counts}; new signals recorded: {len(recorded)}")
     for r in recorded:
         say(f"  {r['symbol']:<6} {'LONG ' if r['direction'] == 1 else 'SHORT'} reaction {r['features']['reaction']:+.1%}")
