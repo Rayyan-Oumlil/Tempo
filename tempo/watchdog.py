@@ -71,7 +71,9 @@ def check_api() -> tuple[bool, str]:  # pragma: no cover - needs a live Gateway
     from ib_async import IB
     ib = IB()
     try:
-        ib.connect(HOST, PORT, clientId=CLIENT_ID, timeout=CHECK_TIMEOUT, readonly=True)
+        # raiseSyncErrors: a Gateway whose IBKR login is gone still accepts the socket but times out positions/orders/executions;
+        # without this flag that counted as healthy (2026-11-13: six entry runs failed while the watchdog stayed green)
+        ib.connect(HOST, PORT, clientId=CLIENT_ID, timeout=CHECK_TIMEOUT, readonly=True, raiseSyncErrors=True)
         accounts = ib.managedAccounts()
         server_time = ib.reqCurrentTime()
         return (bool(accounts and server_time), f"accounts={len(accounts)}")
