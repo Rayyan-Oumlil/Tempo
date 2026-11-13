@@ -40,7 +40,8 @@ def test_quarter_bookkeeping():
     qs = ev.quarters(2025, date(2026, 11, 13))
     assert qs[-1] == (2026, 4) and len(qs) == 8
     assert ev.quarter_complete(2026, 3, date(2026, 11, 13)) and not ev.quarter_complete(2026, 4, date(2026, 11, 13))
-    assert ev.quarter_complete(2025, 4, date(2026, 1, 1)) and not ev.quarter_complete(2025, 4, date(2025, 12, 31))
+    assert not ev.quarter_complete(2025, 4, date(2026, 1, 1)) and ev.quarter_complete(2025, 4, date(2026, 1, 6))   # the index needs days to settle
+    assert not ev.quarter_complete(2025, 4, date(2025, 12, 31))
 
 
 def test_completed_quarters_are_fetched_once_and_the_running_one_always(tmp_path):
@@ -103,3 +104,43 @@ def test_a_dropped_connection_becomes_an_edgar_error(monkeypatch):
     monkeypatch.setattr(urllib.request, "urlopen", boom)
     with pytest.raises(ev.edgar.EdgarError):
         ev.edgar.fetch_bytes("https://data.sec.gov/x")
+
+
+def test_a_file_that_fails_validation_is_never_cached_and_the_running_quarter_is_skipped_not_fatal(tmp_path):
+    bad = gzip.compress(b"nothing useful here")
+    with pytest.raises(ev.FormIndexError):
+        ev.load_quarter(2024, 1, date(2026, 1, 1), lambda url: bad, tmp_path)
+    assert not list(tmp_path.iterdir())
+    good = gzip.compress(index(TOI).encode())
+    skipped = []
+
+    def fetch(url):
+        if "2026/QTR4" in url:
+            raise ev.edgar.EdgarError(url, "HTTP 404")           # the running quarter is not published yet
+        return good
+
+    assert len(ev.scan(2026, date(2026, 10, 2), fetch, tmp_path, skipped)) == 1 and "2026 Q4" in skipped[0]
+    with pytest.raises(ev.edgar.EdgarError):                      # a COMPLETED quarter that fails is still fatal
+        ev.scan(2026, date(2026, 10, 2), lambda url: (_ for _ in ()).throw(ev.edgar.EdgarError(url, "HTTP 404")), tmp_path / "x")
+
+
+def test_truncated_gzip_is_a_form_index_error(tmp_path):
+    with pytest.raises(ev.FormIndexError):
+        ev.load_quarter(2024, 1, date(2026, 1, 1), lambda url: gzip.compress(b"x" * 1000)[:20], tmp_path)
+
+
+def test_enrich_survives_a_non_json_page_and_saves_what_it_has_when_something_blows_up(tmp_path):
+    import json as js
+    path = tmp_path / "m.json"
+
+    def fetch(url):
+        if "0000000002" in url:
+            return "<html>rate limited</html>"
+        if "0000000003" in url:
+            raise RuntimeError("boom")
+        return js.dumps({"sic": "1", "exchanges": ["NYSE"]})
+
+    with pytest.raises(RuntimeError):
+        ev.enrich(["1", "2", "3"], fetch, path, save_every=1000)
+    saved = js.loads(path.read_text())
+    assert "sic" in saved["1"] and "error" in saved["2"] and "3" not in saved

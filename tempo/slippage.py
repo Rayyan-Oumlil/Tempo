@@ -24,15 +24,18 @@ def _bps(x: float) -> float:
     return x * 1e4
 
 
-def trade_gaps(state: dict[str, dict], scores: list[dict]) -> tuple[list[dict], int]:
-    """(one row per scored paper trade, number of entered trades still waiting for a score)."""
+def trade_gaps(state: dict[str, dict], scores: list[dict]) -> tuple[list[dict], int, list[str]]:
+    """(one row per scored paper trade, entered trades still waiting for a score, sources traded but missing from HORIZONS)."""
     by_signal = {(s["signal_id"], s["horizon"]): s for s in scores}
-    rows, pending = [], 0
+    rows, pending, unknown = [], 0, set()
     for sid, t in state.items():
         if t.get("status") not in ("entered", "exited") or not t.get("fill_price"):
             continue
         source = sid.split(":", 1)[0]
-        score = by_signal.get((sid, HORIZONS.get(source, -1)))
+        if source not in HORIZONS:
+            unknown.add(source)
+            continue
+        score = by_signal.get((sid, HORIZONS[source]))
         if score is None:
             pending += 1
             continue
@@ -43,7 +46,7 @@ def trade_gaps(state: dict[str, dict], scores: list[dict]) -> tuple[list[dict], 
         rows.append({"signal_id": sid, "source": source, "symbol": t["symbol"], "entry_gap_bps": entry_gap, "exit_gap_bps": exit_gap,
                      "entry_day": score["entry_date"], "vs_reference_bps": _bps(d * (t["fill_price"] - t["ref_price"]) / t["ref_price"])})
     rows.sort(key=lambda r: (r["entry_day"], r["signal_id"]))
-    return rows, pending
+    return rows, pending, sorted(unknown)
 
 
 def summarize(rows: list[dict]) -> dict[str, dict]:
@@ -66,7 +69,7 @@ def alarms(summary: dict[str, dict]) -> list[str]:
             for src, s in summary.items() if s["last_abs"] is not None and s["last_abs"] > ALARM_BPS]
 
 
-def render(rows: list[dict], pending: int) -> tuple[str, list[str]]:
+def render(rows: list[dict], pending: int, unknown: list[str] | None = None) -> tuple[str, list[str]]:
     summary = summarize(rows)
     lines = [f"{'source':22} {'n':>3} {'entry mean':>10} {'entry |gap|':>11} {'exits':>5} {'exit mean':>9}   (bps, positive = worse than the ledger)"]
     for src, s in summary.items():
@@ -75,13 +78,14 @@ def render(rows: list[dict], pending: int) -> tuple[str, list[str]]:
     if not summary:
         lines.append("no paper trade has an exec_v2 score yet")
     lines.append(f"{pending} entered trade(s) still waiting for a score; alarm needs {ALARM_MIN_TRADES} scored entries in one source")
-    return "\n".join(lines), alarms(summary)
+    problems = alarms(summary) + [f"{s}: traded in the paper account but has no horizon in paper_run.HORIZONS, so its fills cannot be checked" for s in unknown or []]
+    return "\n".join(lines), problems
 
 
 def report() -> tuple[str, list[str]]:  # pragma: no cover - reads the live journals
     from tempo.journal import Journal
-    rows, pending = trade_gaps(load_state(Journal(PAPER_FILE)), Ledger().scores())
-    return render(rows, pending)
+    rows, pending, unknown = trade_gaps(load_state(Journal(PAPER_FILE)), Ledger().scores())
+    return render(rows, pending, unknown)
 
 
 def main() -> int:  # pragma: no cover - entry point

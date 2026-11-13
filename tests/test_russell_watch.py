@@ -56,3 +56,28 @@ def test_run_skips_names_with_no_data_and_summary_counts_only_real_values():
     s = rw.summarize(rows)
     assert s["add"]["runup"][0] == 1 and s["delete"]["runup"] == (0, None)
     assert "n" in rw.render(s) or "(" in rw.render(s)
+
+
+def test_reverse_window_is_flipped_so_positive_means_the_pressure_unwound():
+    stock = {w: None for w in rw.WINDOWS} | {"reverse": -0.02, "last5": 0.02}
+    bench = {w: 0.0 for w in rw.WINDOWS}
+    add, dele = rw.measure("add", stock, bench), rw.measure("delete", stock, bench)
+    assert add["reverse"] == pytest.approx(0.02) and dele["reverse"] == pytest.approx(-0.02)   # an addition that fell afterwards = textbook
+    assert add["last5"] == pytest.approx(0.02) and dele["last5"] == pytest.approx(-0.02)
+
+
+def test_a_missing_or_unfinished_benchmark_is_fatal_not_an_empty_success():
+    daily = bars([100, 100, 110, 112], [100, 105, 111, 114.0])
+    with pytest.raises(rw.BenchError):
+        rw.run({"AAA": "add"}, lambda s: None, lambda s: Intraday({}))
+    with pytest.raises(rw.BenchError):                         # benchmark has bars but no 15:55 print: a window is missing
+        rw.run({"AAA": "add"}, lambda s: daily, lambda s: Intraday({}))
+    short = Bars(DAYS[:3], [100.0] * 3, [100.0] * 3, [100.0] * 3, [100.0] * 3)
+    with pytest.raises(rw.BenchError):                         # no trading day after the event yet
+        rw.run({"AAA": "add"}, lambda s: short, lambda s: Intraday({("2026-12-11", "15:55"): 100.0}))
+
+
+def test_a_list_saved_by_excel_with_a_bom_loads(tmp_path):
+    p = tmp_path / "l.csv"
+    p.write_bytes(b"\xef\xbb\xbfsymbol,action\r\nAAA,add\r\n")
+    assert rw.load_list(p) == {"AAA": "add"}

@@ -10,7 +10,8 @@ For each name, excess returns against IWM (the small-cap benchmark) over four wi
   day      open of the event day -> 15:55 ET bar open                   (trading before the close)
   last5    15:55 ET bar open -> official close of the event day         (the closing-auction pressure)
   reverse  close of the event day -> close of the next trading day      (what happens once the forced buying or selling is over)
-`signed` multiplies by +1 for additions and -1 for deletions, so a positive number means the textbook direction paid.
+`signed` multiplies by +1 for additions and -1 for deletions, so a positive number means the textbook direction paid; for `reverse` the
+sign is flipped (an addition is expected to FALL afterwards), so positive there means the pressure unwound as the textbook says.
 A window with a missing bar is None, never filled in. One reconstitution is one sample: no verdict comes from it.
 
 Usage: python -m tempo.russell_watch [EVENT_DAY]     (default 2026-12-11)
@@ -39,12 +40,16 @@ class ListError(ValueError):
     pass
 
 
+class BenchError(RuntimeError):
+    pass
+
+
 def load_list(path: Path = LISTS) -> dict[str, str]:
     """symbol -> action. Refuses a missing file, unknown actions, and a symbol listed as both add and delete."""
     if not path.exists():
         raise ListError(f"{path} does not exist: copy the FTSE Russell preliminary additions/deletions there as `symbol,action`")
     out: dict[str, str] = {}
-    with path.open(encoding="utf-8", newline="") as f:
+    with path.open(encoding="utf-8-sig", newline="") as f:
         for n, row in enumerate(csv.DictReader(f), 2):
             sym, action = (row.get("symbol") or "").strip().upper(), (row.get("action") or "").strip().lower()
             if not sym or action not in ACTIONS:
@@ -93,8 +98,12 @@ def window_returns(daily: Bars | None, intra: Intraday | None, day: str, announc
 
 
 def measure(action: str, stock: dict[str, float | None], bench: dict[str, float | None]) -> dict[str, float | None]:
-    sign = ACTIONS[action]
-    return {w: (None if stock[w] is None or bench[w] is None else sign * (stock[w] - bench[w])) for w in WINDOWS}  # type: ignore[operator]
+    """Signed excess vs the benchmark. `reverse` is flipped: after an addition the textbook outcome is a FALL once the forced buying ends."""
+    out: dict[str, float | None] = {}
+    for w in WINDOWS:
+        s, b = stock[w], bench[w]
+        out[w] = None if s is None or b is None else (-1 if w == "reverse" else 1) * ACTIONS[action] * (s - b)
+    return out
 
 
 def summarize(rows: list[dict]) -> dict[str, dict[str, tuple[int, float | None]]]:
@@ -125,7 +134,12 @@ def write_csv(rows: list[dict], path: Path = OUT) -> None:
 
 def run(listing: dict[str, str], fetch_daily, fetch_intraday, day: str = EVENT_DAY) -> tuple[list[dict], list[str]]:
     """(one row per listed name that has data, symbols with no data at all). Fetchers take a symbol, return Bars / Intraday or None."""
-    bench = window_returns(fetch_daily(BENCH), fetch_intraday(BENCH), day)
+    bench_daily = fetch_daily(BENCH)
+    if _next_day(bench_daily, day) is None:
+        raise BenchError(f"no {BENCH} daily bar after {day}: the event is not over, or the benchmark could not be fetched")
+    bench = window_returns(bench_daily, fetch_intraday(BENCH), day)
+    if any(v is None for v in bench.values()):
+        raise BenchError(f"{BENCH} is missing a window ({bench}): no name can be measured against it")
     rows, missing = [], []
     for sym, action in sorted(listing.items()):
         stock = window_returns(fetch_daily(sym), fetch_intraday(sym), day)
@@ -153,6 +167,9 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live glue
     ib.RequestTimeout = 60
     try:
         rows, missing = run(listing, lambda s: ibkr_bars(ib, s), lambda s: ibkr_intraday(ib, s), day)
+    except BenchError as exc:
+        print(f"[FAIL] {exc}", file=sys.stderr)
+        return 1
     finally:
         ib.disconnect()
     write_csv(rows)

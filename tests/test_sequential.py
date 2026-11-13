@@ -83,3 +83,13 @@ def test_msprt_charges_for_overlap_and_remembers_an_early_peak():
     assert sq.msprt_p(smooth, 4) > sq.msprt_p(smooth, 0)
     flip = [0.03 + e for e in noise(20, 0, 0.002, 11)] + [-0.03 + e for e in noise(20, 0, 0.002, 12)]
     assert sq.msprt_p(flip, 0) < 0.01          # evidence seen at day 20 is not erased by the mean returning to zero
+
+
+def test_deflated_sharpe_uses_the_effective_number_of_days():
+    base = noise(400, 0.004, 0.02, 21)
+    smooth = [mean(base[i:i + 21]) for i in range(0, 120)]            # 21-day overlap: 120 cohort days are worth only a handful
+    assert sq.effective_n(smooth, 20) < 0.3 * len(smooth)
+    assert math.isclose(sq.effective_n(noise(120, 0, 0.02, 22), 0), 120.0)
+    scores = score_rows("good", smooth, horizon=21) + score_rows("alt", noise(120, 0.0, 0.02, 23), horizon=1)
+    by = {r.source: r for r in sq.analyse(scores)}
+    assert by["good"].dsr is not None and by["good"].dsr < 0.97
