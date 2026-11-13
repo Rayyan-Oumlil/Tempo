@@ -21,9 +21,10 @@ import gzip
 import json
 import re
 import sys
+import zlib
 from collections import Counter
 from collections.abc import Callable, Iterable
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from tempo import edgar
@@ -32,6 +33,7 @@ INDEX_URL = "https://www.sec.gov/Archives/edgar/full-index/{year}/QTR{q}/form.gz
 CACHE = Path("data/events/index")
 OUT = Path("data/events/events.csv")
 FIRST_YEAR = 2019
+SETTLE_DAYS = 5
 # Original filings only: amendments (form type ending "/A") are the same event again and are never counted.
 WATCH = ("SC TO-I", "10-12B", "DEFM14A", "SC 13E3", "N-23C3A", "N-23C3B", "N-23C-3")
 FUND_HINT = re.compile(r"\b(fund|trust|portfolio|strategies|partners|opportunit\w*|income)\b", re.IGNORECASE)
@@ -75,9 +77,10 @@ def quarters(first_year: int, today: date) -> list[tuple[int, int]]:
 
 
 def quarter_complete(year: int, q: int, today: date) -> bool:
+    """Complete only a few days after the quarter ends: the index is built nightly, so the first days still miss late filings."""
     end_month = 3 * q
     nxt = date(year + (end_month == 12), end_month % 12 + 1, 1)
-    return nxt <= today
+    return nxt + timedelta(days=SETTLE_DAYS) <= today
 
 
 def load_quarter(year: int, q: int, today: date, fetch: Callable[[str], bytes] = edgar.fetch_bytes, cache: Path = CACHE) -> list[dict]:
@@ -87,20 +90,32 @@ def load_quarter(year: int, q: int, today: date, fetch: Callable[[str], bytes] =
         raw = path.read_bytes()
     else:
         raw = fetch(INDEX_URL.format(year=year, q=q))
-        try:
-            gzip.decompress(raw)
-        except OSError as exc:
-            raise FormIndexError(f"{year} Q{q}: not a gzip file ({exc})") from exc
-        if done:
-            cache.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(raw)
-    return parse_form_index(gzip.decompress(raw).decode("latin-1"))
+    try:
+        text = gzip.decompress(raw).decode("latin-1")
+    except (OSError, EOFError, zlib.error) as exc:
+        raise FormIndexError(f"{year} Q{q}: not a readable gzip file ({exc!r})") from exc
+    events = parse_form_index(text)          # validated BEFORE it can be cached
+    if done and not path.exists():
+        cache.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(raw)
+    return events
 
 
-def scan(first_year: int, today: date, fetch: Callable[[str], bytes] = edgar.fetch_bytes, cache: Path = CACHE) -> list[dict]:
+def scan(first_year: int, today: date, fetch: Callable[[str], bytes] = edgar.fetch_bytes, cache: Path = CACHE,
+         skipped: list[str] | None = None) -> list[dict]:
+    """All watched filings. The running quarter may not be published or usable yet: that one quarter is skipped and named in `skipped`;
+    a failure in any completed quarter still raises."""
     out: dict[str, dict] = {}
     for year, q in quarters(first_year, today):
-        for ev in load_quarter(year, q, today, fetch, cache):
+        try:
+            found = load_quarter(year, q, today, fetch, cache)
+        except (edgar.EdgarError, FormIndexError) as exc:
+            if quarter_complete(year, q, today):
+                raise
+            if skipped is not None:
+                skipped.append(f"{year} Q{q}: {exc}")
+            continue
+        for ev in found:
             out[ev["accession"]] = ev
     return sorted(out.values(), key=lambda e: (e["filed"], e["accession"]))
 
@@ -123,7 +138,7 @@ def write_csv(events: list[dict], path: Path = OUT) -> None:
 def fetch_meta(cik: str, fetch: Callable[[str], str] = edgar.fetch) -> dict:
     try:
         j = json.loads(fetch(SUBMISSIONS.format(cik=int(cik))))
-    except edgar.EdgarError as exc:
+    except (edgar.EdgarError, ValueError) as exc:        # ValueError: a throttle or error page that is not JSON
         return {"error": str(exc)}
     return {"sic": j.get("sic"), "sic_desc": j.get("sicDescription"), "tickers": j.get("tickers") or [],
             "exchanges": [x for x in (j.get("exchanges") or []) if x], "entity": j.get("entityType")}
@@ -138,11 +153,13 @@ def enrich(ciks: Iterable[str], fetch: Callable[[str], str] = edgar.fetch, path:
     meta: dict[str, dict] = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     todo = [c for c in sorted(set(ciks), key=int) if "sic" not in meta.get(c, {})]
     path.parent.mkdir(parents=True, exist_ok=True)
-    for n, cik in enumerate(todo, 1):
-        meta[cik] = fetch_meta(cik, fetch)
-        if n % save_every == 0:
-            path.write_text(json.dumps(meta), encoding="utf-8")
-    path.write_text(json.dumps(meta), encoding="utf-8")
+    try:
+        for n, cik in enumerate(todo, 1):
+            meta[cik] = fetch_meta(cik, fetch)
+            if n % save_every == 0:
+                path.write_text(json.dumps(meta), encoding="utf-8")
+    finally:
+        path.write_text(json.dumps(meta), encoding="utf-8")       # whatever was fetched is never lost
     return meta
 
 
@@ -159,7 +176,10 @@ def main(argv: list[str] | None = None) -> int:
     if args and args[0] == "enrich":
         return main_enrich()
     first = int(args[0]) if args else FIRST_YEAR
-    events = scan(first, date.today())
+    skipped: list[str] = []
+    events = scan(first, date.today(), skipped=skipped)
+    for note in skipped:
+        print(f"skipped running quarter, not usable yet: {note}")
     write_csv(events)
     table = per_year(events)
     years = sorted({y for c in table.values() for y in c})

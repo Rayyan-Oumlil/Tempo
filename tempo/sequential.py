@@ -6,7 +6,8 @@ standard error uses Newey-West (Bartlett weights, lag = horizon - 1), never the 
 
 Reported per row: n trades, n cohort days, mean net excess, HAC standard error and 95% interval, t-statistic, minimum detectable
 effect at 80% power (2.8 x SE), cohort days still needed to detect a +1% mean, an always-valid p-value (mSPRT) and a deflated
-Sharpe ratio across all rows (Bailey and Lopez de Prado), which charges for having looked at several sources.
+Sharpe ratio across all rows (Bailey and Lopez de Prado), which charges for having looked at several sources and uses the
+effective (overlap-corrected) number of days, not the raw count.
 
 APPROXIMATION, stated on purpose: the plan's ideal is mSPRT on the book's daily mark-to-market return. Scores carry only entry and
 exit prices, so this runs on cohort means with the variance replaced by its HAC estimate (an effective-sample-size correction for
@@ -65,6 +66,13 @@ def msprt_p(x: list[float], lag: int, tau: float = TAU) -> float:
     return min(1.0, 1.0 / best)
 
 
+def effective_n(x: list[float], lag: int) -> float:
+    """Independent observations the series is worth: n shrinks by the ratio of the HAC to the naive variance of the mean."""
+    n = len(x)
+    naive = pstdev(x) ** 2 / n
+    return max(2.0, min(float(n), n * naive / hac_variance_of_mean(x, lag)))
+
+
 def sharpe_stats(x: list[float]) -> tuple[float, float, float]:
     m, sd = mean(x), pstdev(x)
     if sd == 0:
@@ -73,7 +81,7 @@ def sharpe_stats(x: list[float]) -> tuple[float, float, float]:
     return m / sd, sum(v ** 3 for v in z) / len(z), sum(v ** 4 for v in z) / len(z)
 
 
-def deflated_sharpe(sr: float, n: int, skew: float, kurt: float, sr_all: list[float]) -> float | None:
+def deflated_sharpe(sr: float, n: float, skew: float, kurt: float, sr_all: list[float]) -> float | None:
     """Probability that the true Sharpe exceeds the best you would expect from pure luck among len(sr_all) tries. None if < 2 tries."""
     k = len(sr_all)
     if k < 2 or n < 3:
@@ -105,6 +113,7 @@ class Evidence:
 def analyse(scores: list[dict]) -> list[Evidence]:
     rows: list[Evidence] = []
     stats: dict[int, tuple[float, float, float]] = {}
+    neff: dict[int, float] = {}
     for (source, horizon), days in sorted(cohorts(scores).items()):
         x = [m for _, m, _ in days]
         base = Evidence(source, horizon, sum(c for _, _, c in days), len(x), mean(x))
@@ -112,13 +121,14 @@ def analyse(scores: list[dict]) -> list[Evidence]:
             lag = max(horizon - 1, 0)
             se = math.sqrt(hac_variance_of_mean(x, lag))
             stats[len(rows)] = sharpe_stats(x)
+            neff[len(rows)] = effective_n(x, lag)
             base = replace(base, ci=(base.mean - 1.96 * se, base.mean + 1.96 * se), t=base.mean / se, mde=Z_POWER * se,
                            days_needed=math.ceil((Z_POWER * se * math.sqrt(len(x)) / TARGET) ** 2), p=msprt_p(x, lag),
                            sharpe=stats[len(rows)][0])
         rows.append(base)
     srs = [sr for sr, _, _ in stats.values()]
     for i, (sr, skew, kurt) in stats.items():
-        rows[i] = replace(rows[i], dsr=deflated_sharpe(sr, rows[i].days, skew, kurt, srs))
+        rows[i] = replace(rows[i], dsr=deflated_sharpe(sr, neff[i], skew, kurt, srs))
     return rows
 
 

@@ -11,6 +11,7 @@ M = [
     ("p-value uses the last ratio, not the running max", "sequential.py", "best = max(best, math.exp(min(log_l, 700)))", "best = math.exp(min(log_l, 700))"),
     ("interval uses 1.0 sigma", "sequential.py", "base.mean - 1.96 * se", "base.mean - 1.0 * se"),
     ("cohorts not averaged", "sequential.py", "[(d, mean(v), len(v))", "[(d, v[0], len(v))"),
+    ("deflated sharpe ignores the overlap", "sequential.py", "deflated_sharpe(sr, neff[i], skew, kurt, srs)", "deflated_sharpe(sr, rows[i].days, skew, kurt, srs)"),
     ("no deflation for the number of tries", "sequential.py", "sr0 = math.sqrt(variance(sr_all))", "sr0 = 0 * math.sqrt(variance(sr_all))"),
 ]
 
