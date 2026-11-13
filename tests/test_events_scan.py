@@ -69,3 +69,22 @@ def test_per_year_counts_and_csv(tmp_path):
     assert ev.per_year(rows)["SC TO-I"]["2024"] == 1
     ev.write_csv(rows, tmp_path / "e.csv")
     assert (tmp_path / "e.csv").read_text().splitlines()[0] == "form,filed,cik,company,accession,fund_like"
+
+
+def test_enrich_fetches_once_retries_errors_and_marks_listed(tmp_path):
+    import json as js
+    calls = []
+
+    def fetch(url):
+        calls.append(url)
+        if "0000000002" in url and calls.count(url) == 1:
+            raise ev.edgar.EdgarError(url, "HTTP 503")
+        return js.dumps({"sic": "7372", "sicDescription": "Software", "tickers": ["X"], "exchanges": ["Nasdaq"] if "0000000001" in url else [""], "entityType": "operating"})
+
+    path = tmp_path / "m.json"
+    meta = ev.enrich(["1", "2"], fetch, path)
+    assert "error" in meta["2"] and ev.is_listed(meta["1"]) and not ev.is_listed(meta["2"])
+    ev.enrich(["1", "2"], fetch, path)                       # only the failed one is asked again
+    assert len(calls) == 3 and "sic" in js.loads(path.read_text())["2"]
+    rows = [{"form": "SC TO-I", "filed": "2024-03-22", "cik": "1"}, {"form": "SC TO-I", "filed": "2024-05-01", "cik": "2"}]
+    assert ev.listed_per_year(rows, js.loads(path.read_text()))["SC TO-I"]["2024"] == 1

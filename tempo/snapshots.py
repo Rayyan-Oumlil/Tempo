@@ -34,7 +34,7 @@ SHORTSTOCK_HOST = "ftp2.interactivebrokers.com"      # public, user "shortstock"
 SHORTSTOCK_FILE = "usa.txt"
 SHORTSTOCK_HEADER = "#SYM|CUR|NAME|CON|ISIN|REBATERATE|FEERATE|AVAILABLE|FIGI|"
 SHORTSTOCK_MIN_ROWS = 5000
-FRED_SERIES = ("VIXCLS", "VXVCLS")
+FRED_SERIES = ("VIXCLS", "VXVCLS", "DEXCAUS")   # DEXCAUS: Fed H.10 CAD per USD (not the Bank of Canada rate CRA names; close, for fill-day conversion records)
 FRED_MIN_ROWS = 500
 
 

@@ -48,7 +48,7 @@ def test_a_malformed_download_is_not_kept(tmp_path):
 
 def test_fred_requires_a_plausible_file(tmp_path):
     good = ("observation_date,VIXCLS\n" + "\n".join(f"2020-01-{i % 28 + 1:02d},1" for i in range(600))).encode()
-    assert sn.collect_fred(lambda u: good, tmp_path) == ["VIXCLS", "VXVCLS"]
+    assert sn.collect_fred(lambda u: good, tmp_path) == ["VIXCLS", "VXVCLS", "DEXCAUS"]
     with pytest.raises(sn.SnapshotError):
         sn.collect_fred(lambda u: b"observation_date,VIXCLS\n2020-01-01,1", tmp_path)
 
