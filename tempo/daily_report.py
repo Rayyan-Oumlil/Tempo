@@ -39,6 +39,7 @@ class Facts:
     ledger_counts: dict[str, int]
     slippage_text: str = ""
     slippage_alarms: tuple[str, ...] = ()
+    gateway_login: tuple[str, ...] = ()
 
 
 def build(f: Facts) -> tuple[str, str]:
@@ -63,6 +64,7 @@ def build(f: Facts) -> tuple[str, str]:
         if age is None or age > max_age:
             problems.append(f"collector {name}: newest snapshot is {'missing' if age is None else f'{age:.0f} days old'}")
     problems += [f"paper fills vs ledger: {a}" for a in f.slippage_alarms]
+    problems += list(f.gateway_login)
     lines = [f"Tempo daily report, {f.now:%Y-%m-%d %H:%M} ET", ""]
     lines += [f"PROBLEM: {p}" for p in problems] or ["Everything checked is fine."]
     lines += ["", "Ledger signals: " + ", ".join(f"{k} {v}" for k, v in sorted(f.ledger_counts.items()))]
@@ -79,6 +81,7 @@ def _age_days(folder: Path, now: datetime) -> float | None:
 
 
 def gather(now: datetime, root: Path = ROOT) -> Facts:  # pragma: no cover - reads the live box
+    from tempo import gateway_log
     from tempo.backup import latest
     from tempo.hours import is_trading_day
     beat = root / "logs" / "heartbeat.json"
@@ -109,7 +112,7 @@ def gather(now: datetime, root: Path = ROOT) -> Facts:  # pragma: no cover - rea
         slip_text, slip_alarms = "", (f"the slippage report itself failed: {exc!r}",)
     return Facts(now, is_trading_day(now.date()), age, ok, lines,
                  None if newest is None else (now.timestamp() - newest.stat().st_mtime) / 3600,
-                 usage.free / usage.total, {n: _age_days(root / "data" / "snapshots" / n, now) for n, _, _ in COLLECTORS}, counts, slip_text, tuple(slip_alarms))
+                 usage.free / usage.total, {n: _age_days(root / "data" / "snapshots" / n, now) for n, _, _ in COLLECTORS}, counts, slip_text, tuple(slip_alarms), tuple(gateway_log.report()))
 
 
 def main() -> int:  # pragma: no cover - entry point
