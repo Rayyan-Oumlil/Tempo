@@ -14,6 +14,7 @@ M = [
     ('key ignores the signal', 'event_risk.py', 'f"{signal_id}|{_TAG.sub', 'f"{_TAG.sub'),
     ('exited positions held', 'event_risk.py', 't.get("status") == "entered"', 't.get("status") in ("entered", "exited")'),
     ('failure share threshold off', 'event_risk.py', '> MAX_FAILED_SHARE', '> 1.0'),
+    ('insider purchases read as M&A', 'event_risk.py', 'r"acquires(?! [\d,]+ of)"', 'r"acquires"'),
 ]
 
 def fresh():

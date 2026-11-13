@@ -14,6 +14,8 @@ NOW = datetime(2026, 11, 13, 21, 0, tzinfo=timezone.utc)
     ("Acme files for Chapter 11 bankruptcy protection", ["failure"]),
     ("Microsoft Outlook Has Us All in a Chokehold, Apparently", []),
     ("Acme CEO steps down", ["executive"]),
+    ("Acme acquires Beta Corp", ["mna"]),
+    ("CEO Brace Acquires 21,787 Of Skyworks Solutions Inc", []),          # an insider share purchase, not M&A
     ("SEC probe of Acme books widens", ["probe"]),
     ("Acme defaults on its notes", ["failure"]),
     ("Nvidia launches a new chip", []),
