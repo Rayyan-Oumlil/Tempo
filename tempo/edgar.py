@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import functools
 import html
+import http.client
 import json
 import os
 import re
@@ -65,7 +66,7 @@ def fetch_bytes(url: str, timeout: float = TIMEOUT) -> bytes:
             return r.read()
     except urllib.error.HTTPError as exc:
         raise EdgarError(url, f"HTTP {exc.code}") from exc
-    except (urllib.error.URLError, TimeoutError) as exc:
+    except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException) as exc:
         raise EdgarError(url, repr(exc)) from exc
 
 

@@ -88,3 +88,18 @@ def test_enrich_fetches_once_retries_errors_and_marks_listed(tmp_path):
     assert len(calls) == 3 and "sic" in js.loads(path.read_text())["2"]
     rows = [{"form": "SC TO-I", "filed": "2024-03-22", "cik": "1"}, {"form": "SC TO-I", "filed": "2024-05-01", "cik": "2"}]
     assert ev.listed_per_year(rows, js.loads(path.read_text()))["SC TO-I"]["2024"] == 1
+
+
+def test_a_dropped_connection_becomes_an_edgar_error(monkeypatch):
+    import http.client
+    import urllib.request
+
+    monkeypatch.setenv("SEC_USER_AGENT", "test agent")
+    monkeypatch.setattr(ev.edgar, "load_dotenv", lambda: None)
+
+    def boom(*a, **k):
+        raise http.client.RemoteDisconnected("closed")
+
+    monkeypatch.setattr(urllib.request, "urlopen", boom)
+    with pytest.raises(ev.edgar.EdgarError):
+        ev.edgar.fetch_bytes("https://data.sec.gov/x")
