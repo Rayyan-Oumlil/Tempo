@@ -140,6 +140,18 @@ class BandResult:
     verdict: str
 
 
+def judge(cohort: list[float], cost: float) -> tuple[float | None, tuple[float, float] | None, str]:
+    """(mean, 95% interval, verdict) for day-cohort means of the signed gross drift against a registered cost. Kill-only: a pass proves nothing."""
+    if len(cohort) < MIN_DAYS:
+        return None, None, f"too few days ({len(cohort)} < {MIN_DAYS}): no verdict"
+    mean = fmean(cohort)
+    se = math.sqrt(hac_variance_of_mean(cohort, HORIZON - 1))
+    ci = (mean - 1.96 * se, mean + 1.96 * se)
+    if mean < cost:
+        return mean, ci, "KILL: mean gross drift is below the registered cost" + (" (and the interval agrees)" if ci[1] < cost else "")
+    return mean, ci, "not killed (a pass proves nothing: survivorship, no cost or hedge applied)"
+
+
 def evaluate(rows: list[dict], band: str, direction: int | None = None) -> BandResult:
     """Mean over day cohorts of the signed drift, with a Newey-West interval, against the band's registered cost."""
     cost = COSTS[band]
@@ -150,15 +162,7 @@ def evaluate(rows: list[dict], band: str, direction: int | None = None) -> BandR
             by_day[r["day"]].append(r["drift"])
             n += 1
     cohort = [fmean(v) for _, v in sorted(by_day.items())]
-    if len(cohort) < MIN_DAYS:
-        return BandResult(band, n, len(cohort), None, None, cost, f"too few days ({len(cohort)} < {MIN_DAYS}): no verdict")
-    mean = fmean(cohort)
-    se = math.sqrt(hac_variance_of_mean(cohort, HORIZON - 1))
-    ci = (mean - 1.96 * se, mean + 1.96 * se)
-    if mean < cost:
-        verdict = "KILL: mean gross drift is below the registered cost" + (" (and the interval agrees)" if ci[1] < cost else "")
-    else:
-        verdict = "not killed (a pass proves nothing: survivorship, no cost or hedge applied)"
+    mean, ci, verdict = judge(cohort, cost)
     return BandResult(band, n, len(cohort), mean, ci, cost, verdict)
 
 
