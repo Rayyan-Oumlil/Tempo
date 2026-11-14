@@ -35,6 +35,7 @@ index for insider_opportunistic_v1 is `data/insider_routine.json`; rebuild it ea
 | `python -m tempo.sequential` | per source and horizon: mean net excess, Newey-West interval, always-valid p, days still needed, deflated Sharpe; `[clean]` rows drop SPAC and IPO-allocation insider signals; known-unavailable shorts are left out and counted |
 | `python -m tempo.slippage` | paper fill vs ledger price in bps; entries more than 30 min after 09:40 are shown apart as `late` and never alarm |
 | `python -m tempo.portfolio_view` | equal-risk blend, correlations between sources, effective number of independent bets |
+| `python -m tempo.dry_run [date]` | the book sizing and exposure rules WOULD have built for that day's signals, plus the SPY hedge (needs Gateway; sends no orders; needs signals with vol20, i.e. from 2026-11-16) |
 | `python -m tempo.beta_compare` | would a winsorised beta have changed the scores (needs Gateway; report only) |
 | `python -m tempo.autopsy` | cells where a source does unusually well or badly; nominates challengers at 10% false discovery rate |
 | `python -m tempo.events_scan`, `tempo.russell_watch` | passive EDGAR event counts; the December 2026 Russell reconstitution (needs `data/events/russell/lists.csv` by hand) |
