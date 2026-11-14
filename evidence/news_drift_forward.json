@@ -1,0 +1,39 @@
+{
+ "_note": "Registered 2026-11-13 (night), BEFORE a collector exists and before any signal or return of this source was seen. Owner delegated the open choices; they were resolved as recommended in the draft. Do not edit to fit a result. To change a rule, add a dated entry to docs/research/log.md saying why, then edit.",
+ "purpose": "Does a large one-day move WITH a company headline keep going over 5 days (news diffuses slowly)? Leg 1 of plan B4. Its twin no_news_fade_v1 tests the opposite claim for moves WITHOUT news; each leg needs its own pass and a dead leg does not kill the other.",
+ "source_name": "news_drift_v1",
+ "universe": "evidence/universe_sp500_20261111.txt",
+ "event_rule": "At the close of the signal day, the stock's close-to-close return minus SPY's is at least +5% or at most -5% (same measure as earnings_reaction_v1), AND at least one company headline (non-analyst-action, see decisions.headline_rule) timed between 16:00 ET the previous trading day and 16:00 ET the signal day mentions the symbol. Earnings-day moves are excluded (an 8-K item 2.02 filed in the window), because earnings_reaction_v1 already owns them.",
+ "signal_rule": "Direction follows the move: up gives long (+1), down gives short (-1). Liquidity filter as the other evening sources: close at least 5.00 USD, 20-day average dollar volume at least 5,000,000 USD.",
+ "emission": "Evening job, after 16:20 ET, event_id is the signal day; entry is the next session (exec_v2: 09:40 ET bar open); one signal per symbol per 30 days.",
+ "cost_assumption": "round_trip_cost 0.002, large caps at about 2,000 USD.",
+ "ledger": "horizons 1, 5, 21; primary horizon 5; scored by exec_v2 (beta-hedged).",
+ "full_test": {
+  "minimum_scored_signals_at_primary_horizon": 100,
+  "pass_all_of": [
+   "mean net excess at 5 days above 0.3% after cost",
+   "t-statistic above 2.8",
+   "positive mean net excess in both chronological halves",
+   "fewer than 10% unscorable 30 trading days after the horizon"
+  ],
+  "reported_not_criteria": [
+   "confidence interval (40 to 80 events in 120 days is a small sample: the interval matters more than the verdict)",
+   "up and down moves separately",
+   "VIX level at the signal (Nagel condition, logged as a feature)",
+   "tempo.sequential evidence row"
+  ]
+ },
+ "known_limits": [
+  "Headline timing is the provider's timestamp, treated as UTC; a headline can lag the move that caused it.",
+  "A 5% move with a headline may be mostly the earnings season in disguise even after excluding 8-K 2.02 days (pre-announcements, guidance in other forms).",
+  "Short signals assume the stock can be borrowed (A3 marks known-unavailable shorts untradeable)."
+ ],
+ "if_fail": "Report it as a failure and stop spending effort on headline-conditioned drift.",
+ "if_pass": "Not proof and not real money: second period, realistic-size execution check, then evidence/gate.json.",
+ "decisions": {
+  "move_definition": "close-to-close return minus SPY's (same as earnings_reaction_v1)",
+  "headline_rule": "A headline counts when it comes from DJ-RTG, DJ-N or BRFG (BRFUPDN analyst actions are excluded: analyst_actions_v1 owns them) and the symbol appears in it as a whole word in the headline text or in the provider's own ticker tag. Symbols of one or two letters (A, T, IT, ...) count only through the provider's ticker tag or in the forms (SYM) and $SYM, because the bare letters match ordinary words.",
+  "multiplicity_t_bar": 2.8,
+  "headline_check_cost": "one reqHistoricalNews per mover that already passed the 5% and liquidity tests"
+ }
+}
