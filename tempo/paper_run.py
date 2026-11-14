@@ -42,7 +42,10 @@ HORIZONS = {"claude_earnings_v1": 5, "insider_cluster_v1": 21, "analyst_actions_
 # Sources whose open positions are still exited on schedule but that get no NEW entries. insider_cluster_v1 retired
 # 2026-11-12 (log.md): 5 of its first 48 signals were IPO or SPAC allocations (whole-dollar VWAP), the 21-day book held
 # 57% of paper gross, and it needs 50 bps of cost it cannot show it earns. It is still logged and scored in the ledger.
-NO_NEW_ENTRIES = frozenset({"insider_cluster_v1"})
+# 2026-11-13 (log.md): the C2 history kill filter (2011-2025, 7,923 events) found gross 5-day drift of -0.09% (large band, cost 0.20%) and
+# +0.50% (small band, cost 0.60%): both below the registered cost, so the plan's rule drops both bands from paper entries. Both keep being
+# logged and scored forward (that is the registered test); the small band's short leg alone was not killed and stays under watch.
+NO_NEW_ENTRIES = frozenset({"insider_cluster_v1", "earnings_reaction_v1", "earnings_reaction_small_v1"})
 NOTIONAL_PCT = 0.5
 ENTRY_DELAY_MINUTES = 5
 EXIT_LEAD_MINUTES = 15
