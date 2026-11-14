@@ -20,7 +20,7 @@ VPS via `deploy/crontab`, same ET times). Your only daily job: keep IB Gateway l
 | 06:30 | morning | `tempo.insider` for the last 3 trading days: insider_cluster_v1 and insider_opportunistic_v1 |
 | 09:40 to 13:30, final 15:00 | entries | paper entries if any are due (fails closed if the P&L is unreadable; reruns are safe) |
 | 15:46, 15:50, final 15:55 | exits | paper exits if any are due |
-| 16:35, 18:00 | evening | `tempo.earnings_reaction` (only on the reaction day, after 16:20), `analyst_actions`, `weekly_reversal`, `ledger_score`, `ledger`, commit and push the ledger |
+| 16:35, 18:00 | evening | `tempo.earnings_reaction` (only on the reaction day, after 16:20), `analyst_actions`, `weekly_reversal`, `news_split` (B4, both legs), `ledger_score`, `ledger`, commit and push the ledger |
 | 19:15, 20:30 | late | after FINRA publishes: `snapshots`, `option_snapshot`, `short_volume`, `earnings_reaction_small`, `event_risk` (D5 log), `ledger_score`, `autopsy`, `champion`, commit and push |
 | every 10 min | watchdog | `tempo.watchdog`: a full API round trip (positions, orders, executions), not just the socket; restarts the Gateway container after 3 bad checks |
 | 21:30 | daily report | `tempo.daily_report` emails one line "all good" or "N PROBLEM(S)": watchdog, failed jobs, backup, disk, data collectors, paper fills vs ledger, Gateway login errors |
