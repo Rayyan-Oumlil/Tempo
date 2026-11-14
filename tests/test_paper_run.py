@@ -405,7 +405,7 @@ def _signal(source, symbol, day="2026-11-02"):
 
 def test_a_retired_source_gets_no_new_entries_and_no_missed_noise_but_open_positions_still_exit(monkeypatch):
     monkeypatch.setattr(paper_run, "NO_NEW_ENTRIES", REAL_NO_NEW_ENTRIES)
-    assert REAL_NO_NEW_ENTRIES == frozenset({"insider_cluster_v1"})       # amendment 2026-11-12: IPO/SPAC contamination
+    assert REAL_NO_NEW_ENTRIES == frozenset({"insider_cluster_v1", "earnings_reaction_v1", "earnings_reaction_small_v1"})   # 2026-11-12 IPO/SPAC contamination; 2026-11-13 C2 kill filter
     new = _signal("insider_cluster_v1", "NEW")
     held = _signal("insider_cluster_v1", "HELD", day="2026-11-04")
     live = _signal("analyst_actions_v1", "LIVE")
