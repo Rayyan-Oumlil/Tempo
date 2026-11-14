@@ -142,11 +142,11 @@ def test_the_evening_job_commits_the_ledger_only_when_it_changed(tmp_path):
                  notify=rec.notify, log=rec.log, alerts_path=tmp_path / "a.json")
     assert rc == 0
     names = [a[0] if a[0] == "git" else a[-1] for a in seen]
-    assert names == ["tempo.earnings_reaction", "tempo.analyst_actions", "tempo.weekly_reversal", "tempo.ledger_score", "tempo.ledger", "git", "git", "git", "git"]   # add, diff, commit, push
+    assert names == ["tempo.earnings_reaction", "tempo.analyst_actions", "tempo.weekly_reversal", "tempo.news_split", "tempo.ledger_score", "tempo.ledger", "git", "git", "git", "git"]   # add, diff, commit, push
     seen.clear()
     run_job("evening", now=et(ENTRY, 16, 20), ledger=make_ledger(tmp_path), paper=Journal(tmp_path / "p.jsonl"), run=lambda st: (seen.append(st.argv), (0, "ok"))[1],
             notify=rec.notify, log=rec.log, alerts_path=tmp_path / "a.json")
-    assert [a[0] if a[0] == "git" else a[-1] for a in seen] == ["tempo.earnings_reaction", "tempo.analyst_actions", "tempo.weekly_reversal", "tempo.ledger_score", "tempo.ledger", "git", "git"]   # add, diff: nothing staged, stop
+    assert [a[0] if a[0] == "git" else a[-1] for a in seen] == ["tempo.earnings_reaction", "tempo.analyst_actions", "tempo.weekly_reversal", "tempo.news_split", "tempo.ledger_score", "tempo.ledger", "git", "git"]   # add, diff: nothing staged, stop
 
 
 def test_is_due_is_false_for_unknown_jobs(tmp_path):

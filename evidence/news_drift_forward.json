@@ -32,7 +32,7 @@
  "if_pass": "Not proof and not real money: second period, realistic-size execution check, then evidence/gate.json.",
  "decisions": {
   "move_definition": "close-to-close return minus SPY's (same as earnings_reaction_v1)",
-  "headline_rule": "A headline counts when it comes from DJ-RTG, DJ-N or BRFG (BRFUPDN analyst actions are excluded: analyst_actions_v1 owns them) and the symbol appears in it as a whole word in the headline text or in the provider's own ticker tag. Symbols of one or two letters (A, T, IT, ...) count only through the provider's ticker tag or in the forms (SYM) and $SYM, because the bare letters match ordinary words.",
+  "headline_rule": "A headline counts when it comes from DJ-RTG, DJ-N or BRFG (BRFUPDN analyst actions are excluded: analyst_actions_v1 owns them)  AMENDED 2026-11-13 before any collector ran: the feeds carry no per-ticker tag in the headline text (the metadata is the same on every headline and holds no symbol), so the rule is: a headline counts when the provider returns it for the company's contract id (reqHistoricalNews by conId, the provider's own attachment of the story to the company) and its timestamp lies between the previous session's 16:00 ET and today's 16:00 ET. No text matching on the symbol (one- and two-letter tickers would match ordinary words). A lookup that fails is skipped and counted, never read as 'no news'.",
   "multiplicity_t_bar": 2.8,
   "headline_check_cost": "one reqHistoricalNews per mover that already passed the 5% and liquidity tests"
  }
