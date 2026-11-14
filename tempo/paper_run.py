@@ -45,7 +45,9 @@ HORIZONS = {"claude_earnings_v1": 5, "insider_cluster_v1": 21, "analyst_actions_
 # 2026-11-13 (log.md): the C2 history kill filter (2011-2025, 7,923 events) found gross 5-day drift of -0.09% (large band, cost 0.20%) and
 # +0.50% (small band, cost 0.60%): both below the registered cost, so the plan's rule drops both bands from paper entries. Both keep being
 # logged and scored forward (that is the registered test); the small band's short leg alone was not killed and stays under watch.
-NO_NEW_ENTRIES = frozenset({"insider_cluster_v1", "earnings_reaction_v1", "earnings_reaction_small_v1"})
+# 2026-11-14 (log.md): the C1 history kill filter (2018-08 to 2025, 1,845 signal days) found gross 5-day drift of +0.01% (long leg) and +0.06%
+# (short leg) against a 0.20% cost, intervals agreeing: both legs killed, so the plan's rule drops short_volume_v1 from paper entries.
+NO_NEW_ENTRIES = frozenset({"insider_cluster_v1", "earnings_reaction_v1", "earnings_reaction_small_v1", "short_volume_v1"})
 NOTIONAL_PCT = 0.5
 ENTRY_DELAY_MINUTES = 5
 EXIT_LEAD_MINUTES = 15
