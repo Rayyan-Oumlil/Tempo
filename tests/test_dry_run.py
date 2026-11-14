@@ -1,6 +1,6 @@
 import pytest
 
-from tempo.dry_run import plan_day, render
+from tempo.dry_run import plan_day, render, rows_from_signals
 from tempo.sizing import SizingRules
 
 RULES = SizingRules(target_risk_pct=0.3, floor_pct=1.0)
@@ -29,3 +29,12 @@ def test_missing_beta_is_an_error_and_an_empty_day_is_fine():
         plan_day([row("A", beta=None)], EQ, RULES)
     p = plan_day([], EQ, RULES)
     assert p.book == () and p.net_ok and "none needed" in render(p, EQ)
+
+
+def test_signals_become_rows_and_a_symbol_without_beta_is_named_not_defaulted():
+    sigs = [{"symbol": "A", "direction": -1, "price": 10.0, "features": {"vol20": 0.02}},
+            {"symbol": "B", "direction": 1, "price": 20.0, "features": {}}]
+    rows, skipped = rows_from_signals(sigs, lambda s: 1.2 if s == "A" else None)
+    assert rows == [{"symbol": "A", "direction": -1, "price": 10.0, "vol20": 0.02, "beta": 1.2}]
+    assert skipped == [("B", "no beta (too little history)")]
+    assert rows_from_signals([{"symbol": "C", "direction": 1, "price": None}], lambda s: 1.0)[0][0]["vol20"] is None

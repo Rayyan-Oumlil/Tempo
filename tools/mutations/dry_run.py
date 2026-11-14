@@ -11,6 +11,9 @@ M = [
     ("net cap not checked", "dry_run.py", "net_within_cap(book, equity) if book else True", "True"),
     ("hedge dropped", "dry_run.py", "hedge_order(book, equity), net_within_cap", "None, net_within_cap"),
     ("cap warning hidden", "dry_run.py", '"net within cap" if plan.net_ok else "NET EXPOSURE ABOVE CAP"', '"net within cap"'),
+    ("no beta defaulted to 1", "dry_run.py", "beta = beta_of(s[" + chr(34) + "symbol" + chr(34) + "])", "beta = beta_of(s[" + chr(34) + "symbol" + chr(34) + "]) or 1.0"),
+    ("vol20 read from the wrong key", "dry_run.py", 's.get("features", {}).get("vol20")', 's.get("features", {}).get("vol")'),
+    ("direction dropped", "dry_run.py", '"direction": s["direction"]', '"direction": 1'),
 ]
 
 def fresh():
