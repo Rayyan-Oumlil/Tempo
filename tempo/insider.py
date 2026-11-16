@@ -14,6 +14,7 @@ import json
 import re
 import sys
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -30,6 +31,8 @@ MIN_PRICE = 5.0
 RESIGNAL_DAYS = 30
 ROUND_TRIP_COST = 0.005
 MAX_DOCUMENT_CHARS = 500_000
+FETCH_WORKERS = 6        # one request takes about 1 s; the shared 0.25 s throttle still caps the rate at 4 a second (SEC limit: 10)
+CHECKPOINT_EVERY = 50    # filings per chunk: fetched in parallel, then parsed and saved in index order
 NEW_YORK = ZoneInfo("America/New_York")
 INDEX_ROW = re.compile(r"^4\s+(.+?)\s+(\d+)\s+(\d{8})\s+(edgar/\S+)\s*$")
 SYMBOL = re.compile(r"^[A-Z]{1,5}$")
@@ -171,21 +174,27 @@ def process_day(day: date, fetcher=fetch, cache: Path = CACHE, say=print) -> dic
     seen, _ = load_cache(cache)
     todo = [r for r in rows if r["accession"] not in seen]
     stats = {"filings": len(rows), "new": len(todo), "purchases": 0, "failed": 0}
-    batch: list[dict] = []
-    for i, row in enumerate(todo, 1):
+
+    def get(row: dict) -> tuple[str, EdgarError | None]:
         try:
-            buys = parse_form4(fetcher(f"https://www.sec.gov/Archives/{row['path']}"), row["filing_date"], row["accession"])
+            return fetcher(f"https://www.sec.gov/Archives/{row['path']}"), None
         except EdgarError as err:
-            stats["failed"] += 1
-            say(f"  failed {row['accession']}: {err}")
-            continue
-        batch += [{"k": "buy", "buy": b} for b in buys] + [{"k": "filing", "acc": row["accession"]}]
-        stats["purchases"] += len(buys)
-        if i % 50 == 0 or i == len(todo):
+            return "", err
+
+    with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as pool:
+        for start in range(0, len(todo), CHECKPOINT_EVERY):
+            chunk = todo[start:start + CHECKPOINT_EVERY]
+            batch: list[dict] = []
+            for row, (document, err) in zip(chunk, pool.map(get, chunk)):
+                if err is not None:
+                    stats["failed"] += 1
+                    say(f"  failed {row['accession']}: {err}")
+                    continue
+                buys = parse_form4(document, row["filing_date"], row["accession"])
+                batch += [{"k": "buy", "buy": b} for b in buys] + [{"k": "filing", "acc": row["accession"]}]
+                stats["purchases"] += len(buys)
             _append(cache, batch)
-            batch = []
-            say(f"  {day}: {i}/{len(todo)} filings, {stats['purchases']} purchases so far")
-    _append(cache, batch)
+            say(f"  {day}: {start + len(chunk)}/{len(todo)} filings, {stats['purchases']} purchases so far")
     return stats
 
 

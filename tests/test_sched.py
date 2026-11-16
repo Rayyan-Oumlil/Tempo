@@ -207,3 +207,10 @@ def test_the_late_job_collects_data_before_it_records_and_survives_one_failing_s
                  notify=rec.notify, log=rec.log, alerts_path=tmp_path / "a.json")
     assert rc == 1 and any(a[-1] == "tempo.short_volume" for a in seen) and ("git", "push") in seen
     assert rec.notes and "FINRA down" in rec.notes[0][1]
+
+
+def test_the_insider_pull_gets_a_longer_timeout_than_the_default_step():
+    from tempo.sched import STEP_TIMEOUT_S
+    (step,) = steps_for("morning", date(2026, 11, 10))
+    assert step.timeout_s > STEP_TIMEOUT_S
+    assert Step(("a",)).timeout_s == STEP_TIMEOUT_S

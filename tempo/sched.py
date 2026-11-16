@@ -31,12 +31,14 @@ ALERTS_FILE = ROOT / "logs" / "sched_alerts.json"
 JOBS = ("morning", "entries", "exits", "evening", "late")
 PULL_DAYS = 3          # the morning pull covers this many trading days, so a missed morning heals itself
 STEP_TIMEOUT_S = 900
+INSIDER_TIMEOUT_S = 1800   # a Friday's Form 4 filings can be thousands; the pull saves progress, so a cut-off run resumes
 
 
 @dataclass(frozen=True)
 class Step:
     argv: tuple[str, ...]
     env: tuple[tuple[str, str], ...] = ()
+    timeout_s: int = STEP_TIMEOUT_S
 
 
 def previous_trading_days(day: date, n: int) -> list[date]:
@@ -54,7 +56,7 @@ def steps_for(job: str, today: date) -> list[Step]:
     py = sys.executable
     orders = (("IBKR_READONLY", "0"),)
     if job == "morning":
-        return [Step((py, "-m", "tempo.insider", *(d.isoformat() for d in previous_trading_days(today, PULL_DAYS))))]
+        return [Step((py, "-m", "tempo.insider", *(d.isoformat() for d in previous_trading_days(today, PULL_DAYS))), timeout_s=INSIDER_TIMEOUT_S)]
     if job == "entries":
         return [Step((py, "-m", "tempo.paper_run", "entries"), orders)]
     if job == "exits":
@@ -89,9 +91,9 @@ def _run(step: Step) -> tuple[int, str]:
     no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0)   # Windows only: no console flashing up from a scheduled run
     try:
         done = subprocess.run(step.argv, cwd=ROOT, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                              timeout=STEP_TIMEOUT_S, creationflags=no_window)
+                              timeout=step.timeout_s, creationflags=no_window)
     except subprocess.TimeoutExpired:
-        return 124, f"timed out after {STEP_TIMEOUT_S}s: {' '.join(step.argv)}"
+        return 124, f"timed out after {step.timeout_s}s: {' '.join(step.argv)}"
     return done.returncode, (done.stdout or "") + (done.stderr or "")
 
 

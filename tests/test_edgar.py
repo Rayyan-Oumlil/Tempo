@@ -90,3 +90,18 @@ def test_brief_text_keeps_the_head_and_the_guidance_lines_only():
     out = brief_text(text, head=60, max_lines=5)
     assert out.startswith("HEADLINE: results") and "expects revenue of 17 billion" in out and "2026 Guidance" in out
     assert out.count("filler line") < 5 and "legal boilerplate" not in out
+
+
+def test_throttle_hands_each_of_many_simultaneous_callers_its_own_slot():
+    import threading
+    sleeps, lock = [], threading.Lock()
+
+    def sleep(seconds):
+        with lock:
+            sleeps.append(round(seconds, 6))
+
+    t = Throttle(min_interval=0.03, clock=lambda: 100.0, sleep=sleep)   # time stands still: every caller arrives "at once"
+    threads = [threading.Thread(target=t.wait) for _ in range(10)]
+    [th.start() for th in threads]
+    [th.join() for th in threads]
+    assert sorted(sleeps) == [round(0.03 * k, 6) for k in range(1, 10)]   # the first caller goes at once, the rest queue 0.03 s apart

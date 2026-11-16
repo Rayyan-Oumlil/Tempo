@@ -1,3 +1,4 @@
+import json
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
@@ -178,8 +179,8 @@ def test_process_day_uses_the_real_url_layout_and_caches_purchases(tmp_path):
     urls = []
     stats = process_day(date(2026, 11, 2), fetcher=fake_fetcher(urls), cache=tmp_path / "c.jsonl", say=lambda *_: None)
     assert urls[0] == "https://www.sec.gov/Archives/edgar/daily-index/2026/QTR4/form.20261102.idx"
-    assert urls[1:] == ["https://www.sec.gov/Archives/edgar/data/1889614/0001889614-26-000011.txt",
-                        "https://www.sec.gov/Archives/edgar/data/66740/0000066740-26-000314.txt"]
+    assert sorted(urls[1:]) == ["https://www.sec.gov/Archives/edgar/data/1889614/0001889614-26-000011.txt",
+                                "https://www.sec.gov/Archives/edgar/data/66740/0000066740-26-000314.txt"]   # fetched in parallel: any order
     assert stats == {"filings": 2, "new": 2, "purchases": 2, "failed": 0}
     seen, buys = load_cache(tmp_path / "c.jsonl")
     assert seen == {"0001889614-26-000011", "0000066740-26-000314"} and len(buys) == 2
@@ -237,3 +238,50 @@ def test_process_day_skips_the_fetch_when_the_sec_is_closed(tmp_path):
     def boom(url): raise AssertionError("must not fetch")
     out = process_day(date(2026, 11, 11), fetcher=boom, cache=tmp_path / "c.jsonl", say=lambda m: None)
     assert out == {"filings": 0, "new": 0, "purchases": 0, "failed": 0}
+
+
+def _big_index(n):
+    rows = "".join(f"4           FILER {i:04d}                                                  {i}     20261102    edgar/data/{i}/{i:010d}-26-000001.txt\n"
+                   for i in range(1, n + 1))
+    return "Form Type   Company Name   CIK   Date Filed  File Name\n-----\n" + rows
+
+
+def test_filings_are_fetched_in_parallel_but_cached_in_index_order(tmp_path):
+    import threading
+    import time
+    lock, live, peak = threading.Lock(), [0], [0]
+
+    def fetch(url):
+        if "daily-index" in url:
+            return _big_index(120)
+        with lock:
+            live[0] += 1
+            peak[0] = max(peak[0], live[0])
+        time.sleep(0.01)
+        with lock:
+            live[0] -= 1
+        return form4()
+
+    cache = tmp_path / "c.jsonl"
+    stats = process_day(date(2026, 11, 2), fetcher=fetch, cache=cache, say=lambda *_: None)
+    assert stats == {"filings": 120, "new": 120, "purchases": 120, "failed": 0}
+    assert 1 < peak[0] <= 8   # several at once, never an unbounded flood (the shared throttle caps the request rate)
+    order = [json.loads(line)["acc"] for line in cache.read_text(encoding="utf-8").splitlines() if '"k": "filing"' in line]
+    assert order == [f"{i:010d}-26-000001" for i in range(1, 121)]
+
+
+def test_a_failure_in_the_middle_of_a_parallel_chunk_loses_only_that_filing(tmp_path):
+    cache = tmp_path / "c.jsonl"
+    urls = []
+
+    def fetch(url):
+        if "daily-index" in url:
+            return _big_index(60)
+        if "/30/" in url:
+            raise EdgarError(url, "HTTP 503")
+        return form4()
+
+    stats = process_day(date(2026, 11, 2), fetcher=fetch, cache=cache, say=lambda *_: None)
+    assert stats["failed"] == 1 and stats["purchases"] == 59
+    seen = load_cache(cache)[0]
+    assert len(seen) == 59 and "0000000030-26-000001" not in seen

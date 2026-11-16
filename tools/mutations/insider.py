@@ -21,6 +21,9 @@ M = [
     ("DTD check removed", '"<!DOCTYPE" in document.upper() or "<!ENTITY" in document.upper()', "False"),
     ("size limit removed", "len(document) > MAX_DOCUMENT_CHARS or", "False or"),
     ("cost assumption dropped", '"round_trip_cost": ROUND_TRIP_COST, ', ""),
+    ("a failed filing is treated as fetched", "if err is not None:", "if False:"),
+    ("parallel results paired with the wrong filings", "zip(chunk, pool.map(get, chunk))", "zip(chunk, reversed(list(pool.map(get, chunk))))"),
+    ("unbounded workers", "FETCH_WORKERS = 6 ", "FETCH_WORKERS = 60 "),
     ("odd symbols allowed", 'SYMBOL = re.compile(r"^[A-Z]{1,5}$")', 'SYMBOL = re.compile(r".*")'),
 ]
 

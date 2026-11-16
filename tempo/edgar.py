@@ -16,6 +16,7 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -35,16 +36,20 @@ class EdgarError(RuntimeError):
 
 
 class Throttle:
-    """Keep at least `min_interval` seconds between requests."""
+    """Keep at least `min_interval` seconds between requests, also when several threads ask at once: each caller reserves
+    the next free slot under a lock and sleeps outside it, so the request rate stays capped however many workers run."""
 
     def __init__(self, min_interval: float = MIN_INTERVAL, clock=time.monotonic, sleep=time.sleep):
         self._min, self._clock, self._sleep, self._last = min_interval, clock, sleep, None
+        self._lock = threading.Lock()
 
     def wait(self) -> None:
-        now = self._clock()
-        if self._last is not None and now - self._last < self._min:
-            self._sleep(self._min - (now - self._last))
-        self._last = self._clock()
+        with self._lock:
+            now = self._clock()
+            slot = now if self._last is None else max(now, self._last + self._min)
+            self._last = slot
+        if slot > now:
+            self._sleep(slot - now)
 
 
 _THROTTLE = Throttle()
