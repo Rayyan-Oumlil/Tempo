@@ -18,6 +18,9 @@
 30 20 * * 1-5 cd /opt/tempo && .venv/bin/python -m tempo.sched late
 # Gateway watchdog: every 10 minutes, all week (the nightly IBC restart window is ignored by the code).
 */10 * * * * cd /opt/tempo && .venv/bin/python -m tempo.watchdog >> logs/watchdog.log 2>&1
+# Gateway full login every night at 00:55, after IBKR's reset (about 23:45-00:45): IBC's 23:59 autorestart resumes a stored token, and the
+# 2nd resume in a row after one full login is refused (2026-11-13, 2026-11-14). A restart logs in with the password in about 5 s.
+55 0 * * * cd /opt/tempo && sudo -n docker compose -f deploy/docker-compose.yml restart >> logs/gateway_restart.log 2>&1
 # Nightly verified backup (journals, state, ledger, data), then the daily all-good email. Every day, weekends too.
 0 21 * * * cd /opt/tempo && .venv/bin/python -m tempo.backup >> logs/backup.log 2>&1
 30 21 * * * cd /opt/tempo && .venv/bin/python -m tempo.daily_report >> logs/daily_report.log 2>&1

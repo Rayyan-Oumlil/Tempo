@@ -12,7 +12,7 @@ services:
       READ_ONLY_API: "no"           # Tempo places paper orders; the account pin (IBKR_ACCOUNT) guards which account
       TIME_ZONE: America/New_York
       TZ: America/New_York
-      AUTO_RESTART_TIME: "11:59 PM" # daily restart without a new 2FA (IBC); a full login is still needed once a week
+      AUTO_RESTART_TIME: "11:59 PM" # resume without a login (IBC); only 1 resume in a row works, so cron restarts the container at 00:55 (deploy/crontab)
       TWOFA_TIMEOUT_ACTION: restart
       RELOGIN_AFTER_TWOFA_TIMEOUT: "yes"
       EXISTING_SESSION_DETECTED_ACTION: primary
