@@ -105,3 +105,68 @@ def test_throttle_hands_each_of_many_simultaneous_callers_its_own_slot():
     [th.start() for th in threads]
     [th.join() for th in threads]
     assert sorted(sleeps) == [round(0.03 * k, 6) for k in range(1, 10)]   # the first caller goes at once, the rest queue 0.03 s apart
+
+
+class _Resp:
+    def __init__(self, data=b"ok"):
+        self._data = data
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self):
+        return self._data
+
+
+def _scripted(monkeypatch, outcomes):
+    """urlopen replaced by a script: each call pops one outcome (an exception is raised, bytes are returned)."""
+    import urllib.request
+
+    from tempo import edgar
+    calls = []
+
+    def fake(req, timeout=None):
+        calls.append(req.full_url)
+        out = outcomes.pop(0)
+        if isinstance(out, Exception):
+            raise out
+        return _Resp(out)
+
+    monkeypatch.setenv("SEC_USER_AGENT", "test agent")
+    monkeypatch.setattr(urllib.request, "urlopen", fake)
+    monkeypatch.setattr(edgar, "_THROTTLE", Throttle(min_interval=0))
+    return calls
+
+
+def test_a_timeout_is_retried_and_the_second_try_can_succeed(monkeypatch):
+    from tempo.edgar import fetch_bytes
+    calls = _scripted(monkeypatch, [TimeoutError("read timed out"), b"page"])
+    sleeps = []
+    assert fetch_bytes("https://x/feed", sleep=sleeps.append) == b"page"
+    assert len(calls) == 2 and sleeps == [2.0]
+
+
+def test_a_server_error_is_retried_but_at_most_twice_then_fails_loudly(monkeypatch):
+    import urllib.error
+
+    from tempo.edgar import fetch_bytes
+    err = lambda: urllib.error.HTTPError("https://x", 503, "busy", None, None)  # noqa: E731
+    calls = _scripted(monkeypatch, [err(), err(), err(), b"never reached"])
+    sleeps = []
+    with pytest.raises(EdgarError, match="HTTP 503"):
+        fetch_bytes("https://x/f", sleep=sleeps.append)
+    assert len(calls) == 3 and sleeps == [2.0, 6.0]
+
+
+def test_a_403_or_404_is_never_retried(monkeypatch):
+    import urllib.error
+
+    from tempo.edgar import fetch_bytes
+    for code in (403, 404):
+        calls = _scripted(monkeypatch, [urllib.error.HTTPError("https://x", code, "no", None, None), b"never reached"])
+        with pytest.raises(EdgarError, match=f"HTTP {code}"):
+            fetch_bytes("https://x/f", sleep=lambda s: None)
+        assert len(calls) == 1   # the SEC answers 403 on days it publishes nothing: that is an answer, not a glitch

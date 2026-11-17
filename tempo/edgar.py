@@ -2,7 +2,8 @@
 
 The SEC's fair-access rules require a User-Agent that identifies the requester (SEC_USER_AGENT in .env, never in the
 repo) and at most 10 requests a second; this client stays far below that (one request per 0.25 s) and fails loudly on
-any HTTP error instead of retrying in a loop.
+any HTTP error. The only retry is bounded: a timeout or a 429/5xx answer is tried again twice (after 2 s, then 6 s), because the
+SEC's dynamic pages time out now and then; the last failure is raised, never swallowed.
 
 Usage: python -m tempo.edgar TICKER [YYYY-MM-DD] [MAX_CHARS | brief]
        prints the text of the company's earnings press release filed that day (default today, New York date).
@@ -27,12 +28,15 @@ from dotenv import load_dotenv
 
 MIN_INTERVAL = 0.25
 TIMEOUT = 30
+RETRY_DELAYS = (2.0, 6.0)                                # seconds before the 2nd and the 3rd attempt
+RETRYABLE_HTTP = frozenset({429, 500, 502, 503, 504})   # 403/404 are answers (the SEC is closed or the page is absent), not glitches
 EXHIBIT = re.compile(r"ex[-_]?99|dex99", re.IGNORECASE)
 
 
 class EdgarError(RuntimeError):
-    def __init__(self, url: str, why: str):
+    def __init__(self, url: str, why: str, retryable: bool = False):
         super().__init__(f"{url}: {why}")
+        self.retryable = retryable
 
 
 class Throttle:
@@ -59,20 +63,31 @@ def fetch(url: str) -> str:
     return fetch_bytes(url).decode("utf-8", "replace")
 
 
-def fetch_bytes(url: str, timeout: float = TIMEOUT) -> bytes:
+def fetch_bytes(url: str, timeout: float = TIMEOUT, sleep=time.sleep) -> bytes:
     load_dotenv()
     agent = os.environ.get("SEC_USER_AGENT")
     if not agent:
         raise EdgarError(url, "SEC_USER_AGENT is not set in .env (the SEC requires a contact string in the User-Agent)")
+    for delay in (*RETRY_DELAYS, None):
+        try:
+            return _get_once(url, agent, timeout)
+        except EdgarError as err:
+            if delay is None or not err.retryable:
+                raise
+            sleep(delay)
+    raise AssertionError("unreachable: the last attempt returns or raises")  # pragma: no cover
+
+
+def _get_once(url: str, agent: str, timeout: float) -> bytes:
     _THROTTLE.wait()
     req = urllib.request.Request(url, headers={"User-Agent": agent, "Accept-Encoding": "identity"})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return r.read()
     except urllib.error.HTTPError as exc:
-        raise EdgarError(url, f"HTTP {exc.code}") from exc
+        raise EdgarError(url, f"HTTP {exc.code}", retryable=exc.code in RETRYABLE_HTTP) from exc
     except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException) as exc:
-        raise EdgarError(url, repr(exc)) from exc
+        raise EdgarError(url, repr(exc), retryable=True) from exc
 
 
 def cik_for(ticker: str, mapping: dict) -> str | None:
