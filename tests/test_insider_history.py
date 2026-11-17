@@ -74,3 +74,11 @@ def test_build_index_merges_quarters_and_records_the_years_covered():
     idx = build_index([2023, 2024], fetch)
     assert idx["years"] == [2023, 2024] and idx["owners"] == {"11": ["2023-11", "2024-11"]}
     assert fetched == [f"{y}q{q}" for y in (2023, 2024) for q in (1, 2, 3, 4)]
+
+
+def test_the_default_build_covers_four_calendar_years_so_a_trade_from_last_year_still_has_its_three_years():
+    from datetime import date
+
+    from tempo.insider_history import default_years
+    assert default_years(date(2026, 11, 16)) == [2022, 2023, 2024, 2025]
+    assert default_years(date(2027, 1, 4)) == [2023, 2024, 2025, 2026]

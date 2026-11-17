@@ -66,3 +66,19 @@ def test_signals_are_recorded_long_with_their_cost_and_not_repeated_within_30_da
     assert record_signals(again, ledger_at(tmp_path, date(2026, 11, 21))) == []
     later = opportunistic_signals([buy(filing="2026-12-15", acc="B1")], date(2026, 12, 15), IDX)
     assert len(record_signals(later, ledger_at(tmp_path, date(2026, 12, 16)))) == 1
+
+
+def test_a_purchase_filed_over_a_year_after_the_trade_is_skipped_not_a_crash_and_not_a_signal():
+    ancient = buy(trade="2002-12-01")                                  # seen in real filings; the routine index cannot cover its year
+    assert opportunistic_signals([ancient], ASOF, IDX) == []
+    year_old = buy(trade="2025-11-09")                                 # 366 days before the 2026-11-10 filing
+    assert opportunistic_signals([year_old], ASOF, IDX) == []
+    assert len(opportunistic_signals([buy(trade="2025-11-11")], ASOF, {"years": [2022, 2023, 2024, 2025], "owners": {}})) == 1   # 364 days: kept
+
+
+def test_a_trade_dated_after_its_own_filing_is_a_typo_and_is_skipped():
+    assert opportunistic_signals([buy(trade="2027-03-01")], ASOF, IDX) == []
+
+
+def test_a_skipped_stale_purchase_does_not_hide_a_good_one_in_the_same_window():
+    assert [s["symbol"] for s in opportunistic_signals([buy(trade="2002-12-01"), buy(symbol="GOOD", acc="A2", cik="9")], ASOF, IDX)] == ["GOOD"]

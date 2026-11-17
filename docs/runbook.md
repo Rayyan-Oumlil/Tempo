@@ -27,7 +27,7 @@ VPS via `deploy/crontab`, same ET times). Your only daily job: keep IB Gateway l
 
 Ledger-only sources (not paper-traded): insider_opportunistic_v1, earnings_reaction_v1, claude_earnings_v1. The routine
 index for insider_opportunistic_v1 is `data/insider_routine.json`; rebuild it each January with
-`python -m tempo.insider_history build` (the morning job fails loudly if it does not cover the three previous years).
+`python -m tempo.insider_history build` (default: the four previous years, so a purchase from last year still has its own three; the morning job fails loudly if the index is missing a year; rebuild it in the first days of January).
 
 ## Reading the research (all read-only, run on the VPS or locally)
 | Command | Answers |

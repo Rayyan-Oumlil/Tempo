@@ -1,7 +1,8 @@
 """Which insiders are "routine" buyers (evidence/insider_opportunistic_forward.json), from the SEC Insider Transactions
 Data Sets: one quarterly zip of every Form 3/4/5, free.
 
-Usage: python -m tempo.insider_history build [YEAR ...]      default: the three calendar years before this one.
+Usage: python -m tempo.insider_history build [YEAR ...]      default: the four calendar years before this one (a purchase from last year
+needs the three years before THAT year).
 Writes data/insider_routine.json: for each officer/director (CIK without leading zeros), the months (YYYY-MM) in
 which they made a counted open-market purchase. About 10 MB is downloaded per quarter; zips are kept in
 data/insider_sets/ so a rebuild does not download again.
@@ -77,6 +78,10 @@ def build_index(years: list[int], fetch_quarter: Callable[[str], bytes]) -> dict
     return {"years": sorted(years), "owners": {k: sorted(v) for k, v in sorted(merged.items())}}
 
 
+def default_years(today: date) -> list[int]:
+    return [today.year - k for k in range(YEARS_BACK + 1, 0, -1)]
+
+
 def is_routine(owner_cik: str, year: int, month: int, index: dict) -> bool:
     """Routine = a counted purchase in this calendar month in each of the three previous years (no history: not routine)."""
     needed = [year - k for k in range(1, YEARS_BACK + 1)]
@@ -105,7 +110,7 @@ def _fetch_quarter(quarter: str) -> bytes:  # pragma: no cover - network
 def main(argv: list[str]) -> int:  # pragma: no cover - network
     if not argv or argv[0] != "build":
         raise SystemExit("usage: python -m tempo.insider_history build [YEAR ...]")
-    years = [int(y) for y in argv[1:]] or [date.today().year - k for k in range(YEARS_BACK, 0, -1)]
+    years = [int(y) for y in argv[1:]] or default_years(date.today())
     index = build_index(years, lambda q: (print(f"  {q}...", flush=True), _fetch_quarter(q))[1])
     INDEX_FILE.parent.mkdir(parents=True, exist_ok=True)
     INDEX_FILE.write_text(json.dumps(index), encoding="utf-8")

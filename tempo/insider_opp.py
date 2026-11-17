@@ -18,8 +18,17 @@ WINDOW_DAYS = 3
 MIN_VALUE = 50_000.0
 MIN_PRICE = 5.0
 RESIGNAL_DAYS = 30
+MAX_TRADE_LAG_DAYS = 365   # robustness, not a rule change (2026-11-16): see actionable()
 ROUND_TRIP_COST = 0.005
 NEW_YORK = ZoneInfo("America/New_York")
+
+
+def actionable(b: dict) -> bool:
+    """False for a purchase filed over a year after its trade, or dated after its own filing (late or mistyped filings; real examples
+    from 2002 and 2027 exist). Nobody can act on them, and the routine test needs three years before the TRADE year, which the index
+    cannot cover: without this guard such a filing makes the whole morning job raise HistoryMissing. Skipped, never guessed."""
+    trade = date.fromisoformat((b.get("trade_date") or b["filing_date"])[:10])
+    return 0 <= (date.fromisoformat(b["filing_date"][:10]) - trade).days <= MAX_TRADE_LAG_DAYS
 
 
 def _opportunistic_owners(b: dict, index: dict) -> list[str]:
@@ -31,7 +40,7 @@ def opportunistic_signals(buys: list[dict], asof: date, index: dict) -> list[dic
     start = (asof - timedelta(days=WINDOW_DAYS)).isoformat()
     by_issuer: dict[tuple[str, str], list[tuple[dict, list[str]]]] = {}
     for b in buys:
-        if not (start < b["filing_date"] <= asof.isoformat()) or not b.get("officer_director"):
+        if not (start < b["filing_date"] <= asof.isoformat()) or not b.get("officer_director") or not actionable(b):
             continue
         owners = _opportunistic_owners(b, index)
         if owners:
