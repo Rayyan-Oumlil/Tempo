@@ -55,6 +55,7 @@ def main() -> int:  # pragma: no cover - needs the Gateway
     symbols = json.loads(MISSING.read_text(encoding="utf-8"))
     todo = [s for s in symbols if not (BARS / f"{s}.csv").exists() and not (BARS / f"{s}.none").exists()]
     print(f"{len(symbols)} symbols wanted, {len(todo)} still to fetch", flush=True)
+    BARS.mkdir(parents=True, exist_ok=True)
     ib = connect(dataclasses.replace(load_config(), client_id=CLIENT_ID))
     ib.RequestTimeout = 60
     done = none = 0
@@ -62,7 +63,6 @@ def main() -> int:  # pragma: no cover - needs the Gateway
         for i, symbol in enumerate(todo, 1):
             contract = Stock(symbol, "SMART", "USD")
             if not ib.qualifyContracts(contract):
-                BARS.mkdir(parents=True, exist_ok=True)
                 (BARS / f"{symbol}.none").write_text("not qualified", encoding="utf-8")
                 none += 1
                 continue
