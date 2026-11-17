@@ -272,7 +272,6 @@ def test_filings_are_fetched_in_parallel_but_cached_in_index_order(tmp_path):
 
 def test_a_failure_in_the_middle_of_a_parallel_chunk_loses_only_that_filing(tmp_path):
     cache = tmp_path / "c.jsonl"
-    urls = []
 
     def fetch(url):
         if "daily-index" in url:
