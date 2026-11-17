@@ -105,3 +105,8 @@ def test_a_purchase_filed_more_than_a_year_after_the_trade_is_not_a_signal():
     assert signals([late], INDEX, CAL, "2024-03-01")["insider_opportunistic_v1"] == []
     fresh = dict(buy("a", "2024-03-05", "1", 80_000), trade_date="2024-03-01")
     assert signals([fresh], INDEX, CAL, "2024-03-01")["insider_opportunistic_v1"] == [("2024-03-06", "ACME")]
+
+
+def test_a_trade_dated_after_its_own_filing_is_a_typo_and_is_ignored():
+    typo = dict(buy("a", "2024-03-05", "1", 80_000), trade_date="2027-03-01")
+    assert signals([typo], INDEX, CAL, "2024-03-01")["insider_opportunistic_v1"] == []
