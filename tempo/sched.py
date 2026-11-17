@@ -31,6 +31,7 @@ ALERTS_FILE = ROOT / "logs" / "sched_alerts.json"
 JOBS = ("morning", "entries", "exits", "evening", "late")
 PULL_DAYS = 3          # the morning pull covers this many trading days, so a missed morning heals itself
 STEP_TIMEOUT_S = 900
+NEWS_ARCHIVE_TIMEOUT_S = 2700   # 501 names x 3 feeds with retries; the archive is idempotent, so a cut-off run loses nothing
 INSIDER_TIMEOUT_S = 1800   # a Friday's Form 4 filings can be thousands; the pull saves progress, so a cut-off run resumes
 
 
@@ -68,7 +69,8 @@ def steps_for(job: str, today: date) -> list[Step]:
         return [Step((py, "-m", "tempo.snapshots")), Step((py, "-m", "tempo.option_snapshot")),
                 Step((py, "-m", "tempo.short_volume")), Step((py, "-m", "tempo.earnings_reaction_small")),
                 Step((py, "-m", "tempo.event_risk")), Step((py, "-m", "tempo.ledger_score")),
-                Step((py, "-m", "tempo.autopsy")), Step((py, "-m", "tempo.champion"))]
+                Step((py, "-m", "tempo.autopsy")), Step((py, "-m", "tempo.champion")),
+                Step((py, "-m", "tempo.news_archive"), timeout_s=NEWS_ARCHIVE_TIMEOUT_S)]
     raise ValueError(f"unknown job {job!r}; expected one of {JOBS}")
 
 

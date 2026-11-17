@@ -126,3 +126,14 @@ def test_a_buy_signal_is_scored_long_so_a_rising_stock_has_a_positive_excess():
     rising = Series(dates, [10.0 + 0.05 * i for i in range(len(dates))], [10.0 + 0.05 * i + 0.01 for i in range(len(dates))], [1e6] * len(dates))
     trades, _ = to_trades([("2024-05-06", "UP")], flat_spy, {"UP": rising}.get)
     assert trades and trades[0].gross > 0
+
+
+def test_late_or_mistyped_purchases_cannot_complete_a_cluster():
+    # the cluster rule has no lag guard of its own, so the history filter is what keeps these out
+    good = buy("a", "2024-03-05", "1", 150_000)
+    late = dict(buy("b", "2024-03-06", "2", 150_000), trade_date="2023-01-10")
+    typo = dict(buy("c", "2024-03-06", "3", 150_000), trade_date="2027-03-01")
+    assert signals([good, late], INDEX, CAL, "2024-03-01")["insider_cluster_v1"] == []
+    assert signals([good, typo], INDEX, CAL, "2024-03-01")["insider_cluster_v1"] == []
+    fresh = buy("b", "2024-03-06", "2", 150_000)
+    assert signals([good, fresh], INDEX, CAL, "2024-03-01")["insider_cluster_v1"] == [("2024-03-07", "ACME")]

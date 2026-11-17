@@ -47,6 +47,24 @@ On Windows PowerShell set the variable first: `$env:IBKR_READONLY=0`.
 
 **Tests:** `pytest` runs the fast offline suite (GitHub Actions runs it, plus `ruff check .`, on every push; dev tools: `pip install -r requirements-dev.txt`). `TEMPO_LIVE=1 pytest tests/live` (PowerShell: `$env:TEMPO_LIVE=1; pytest tests/live`) runs five checks against the paper account during regular hours: lifecycle, bracket plus kill, take-profit exit, kill on a long and a short, and crash recovery. It places real paper orders and leaves the account flat. Tests that need the regular session skip themselves outside it.
 
+## Run the strategy
+Plain answer (2026-11-17): **there is no book.** The three rules that could be tested on history were all KILLED under the frozen protocol (`docs/plan-quant-v2.md`, Workstream F). Nothing here is a promise of profit.
+
+| Rule | Cost | Events | Net mean, 2023-25 | 95% interval | t | Verdict |
+|---|---|---|---|---|---|---|
+| `weekly_reversal_v1` | 0.20% | 3,116 | -0.05% | [-0.39%, +0.30%] | -0.27 | KILL |
+| `insider_cluster_v1` | 0.50% | 1,575 | +0.22% | [-0.46%, +0.90%] | 0.63 | KILL |
+| `insider_opportunistic_v1` | 0.50% | 4,285 | +0.04% | [-0.45%, +0.54%] | 0.17 | KILL |
+
+Earlier history kills: both earnings bands (C2) and `short_volume_v1` (C1). Limits: today's S&P 500 constituents only, so survivorship flatters long legs; a KILL is solid, a pass would never be a confirmation. `news_drift_v1`, `no_news_fade_v1` and `analyst_actions_v1` have too little history and are forward-test only.
+
+Reproduce on a PC (no VPS needed once `data/` is filled; 2026 is never used, it is the holdout):
+```
+python -m tempo.history_report plan      # purchases rebuilt, symbols still missing bars
+python -m tempo.history_report           # the verdict table above
+```
+Refilling `data/` from scratch needs an IB Gateway session for the daily bars (`python -m tempo.history_fetch`) and `python -m tempo.history_fetch sets` for the SEC Form 3/4/5 quarterly sets. The forward tests that remain (ledger, paper_run) are described under the commands above.
+
 ## How orders are kept safe
 Every order goes through `tempo/orders.py` (`place`); nothing else calls `ib.placeOrder`. It refuses non-paper accounts and duplicates, sets `tif`, tags the order with a unique `orderRef`, and writes the intent to `journal/journal.jsonl` **before** sending. New entries also need: mode `normal`, regular hours, a known equity and price, size under the position cap, the account not down more than `max_daily_loss_pct` today, and no stale unresolved journal entries. Orders that reduce a live position are never refused by those limits.
 

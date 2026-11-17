@@ -206,6 +206,41 @@ documented record of what was killed and why.
 
 ---
 
+### Workstream G: slow rules on liquid ETFs (owner: "find something that works", 2026-11-17; protocol frozen BEFORE any run)
+
+**Why.** Workstream F killed the fast, high-turnover, single-stock rules. Research read on 2026-11-17 (sources in `docs/research/log.md`): net of costs most published anomalies lose almost all their return (Chen-Velikov: 93% decay), low-turnover signals are the ones that survive (Novy-Marx-Velikov), PEAD survives only in microcaps and not after costs, day trading loses for 97% (Brazil) and fewer than 1% repeat profit (Taiwan), and no audited live record of retail LLM-built strategies exists. Trend following has a century of evidence (Hurst-Ooi-Pedersen) but recent managed-futures funds were weak (-2.3% a year over the 3 years to Aug 2025). The one asymmetry we can use: a SLOW rule on 15+ years of ETF data (2007 to 2025, includes 2008 and 2022) can be judged by history, where an event rule needs months of forward data.
+
+**What "works" means here [J].** Not "beats SPY on return" (a trend book gives up return in bull markets). It means: a risk-adjusted improvement over a plain 60/40 SPY/AGG portfolio, cheap enough to run, with the drawdown cut visible in 2008 and 2022.
+
+**Protocol (frozen; never edited after a result, add a dated entry instead).**
+
+| # | Rule |
+|---|---|
+| 1 | **Universe:** SPY, QQQ, IWM, EFA, EEM, AGG, TIP, GLD, SLV, DBC, VNQ (daily adjusted closes in `data/`, from 2006-11). No other asset is added after seeing results. |
+| 2 | **Hypotheses, N = 4, parameters fixed from the literature, not tuned.** G1: hold an asset when close > its 200-day SMA. G2: hold when its 252-day return skipping the last 21 days is > 0. G3: dual momentum: every month rank by 126-day return, hold the top 3 that are > 0, else cash. G4: average of the G1 and G2 weights. Sizing for G1, G2, G4: each asset targets 10% annual vol from 60-day realised vol, per-asset weight capped at 1/3, total gross capped at 100%; G3 equal weight. Cash earns 0 (conservative). |
+| 3 | **Timing:** signals computed at the last close of each month, traded at the NEXT close (one-day lag), held to the next month end. |
+| 4 | **Costs:** 5 bps per side on traded notional (liquid ETFs), stressed at 10 bps. |
+| 5 | **Window:** 2008-01 to 2025-12 (first year is warm-up). Sub-periods 2008-2012, 2013-2018, 2019-2025. **2026 is a holdout, touched once, only for a PASS.** |
+| 6 | **Benchmarks:** SPY buy and hold; 60/40 SPY/AGG rebalanced monthly (same costs). |
+| 7 | **PASS (worth a paper-trade) only if ALL:** net Sharpe >= 0.60; net Sharpe >= the 60/40 Sharpe; Deflated Sharpe (Bailey-Lopez de Prado, N = 4) probability >= 0.95; max drawdown no deeper than 60/40's; net CAGR > 0 in each of the three sub-periods; net Sharpe >= 0.40 at 10 bps. Else NO. |
+| 8 | **Stock-level slow rules (quality, value, low-vol, 12-1 momentum) are a separate registered step (G-stocks)**: they need fundamentals from SEC XBRL, which we do not have. Not part of this run. |
+| 9 | **After a PASS:** paper trade the monthly rebalance on the IBKR paper account for 3 months checking fills against the model, then a real-money decision under the existing cap and gate. A PASS is a candidate, never a promise. |
+
+### Workstream N: a very good news pipeline (owner request 2026-11-17; plan frozen before any build or run)
+
+**Problem found 2026-11-17.** The VPS pulls Dow Jones (`DJ-N`, `DJ-RTG`) and Briefing (`BRFG`) headlines for 501 names but (a) stores only counts, never the text, (b) timed out on 3 of 4 lookups in a spot check and silently skips those names, (c) counts market roundups ("...Stocks That Explain Today's Market") and automatic "Stock Slips 7%" lines as news, which makes `news_drift_v1` noisy, (d) has no history, so nothing can be backtested on it.
+
+| Step | What | Done when |
+|---|---|---|
+| N1 | **Archive.** Evening job `tempo.news_archive`: every headline for all 501 names, append-only `data/news_archive/YYYY-MM.jsonl` (symbol, provider, time UTC, article id, headline, fetched_at), deduped by (provider, article id). | Runs on the VPS; one month of text exists to re-read and re-score |
+| N2 | **Reliability.** Retry timeouts (3 tries, backoff), log every unavailable name, coverage = names fetched / 501 in the daily email, loud failure under 90%. | Coverage visible daily; a bad day cannot pass silently |
+| N3 | **Quality labels** (deterministic, no model): `roundup` (same text on 10 or more symbols in a day), `auto_move` (a "Stock Slips/Falls/Sheds/Rises X%" line), `analyst` (price target or rating), `filing` (13F, insider, 8-K), `press_release`, `substantive` (the rest). | Labels stored beside each headline; counts per day in the report |
+| N4 | **History backtest, two sources, protocol frozen before running.** (a) FNSPID headlines 1999-2023 (CC BY-NC-4.0, personal research; download started 2026-11-17; first check: timestamp precision and coverage); (b) SEC 8-K item types (2.02, 5.02, 1.01, 2.01, 8.01) with exact filing times. Entry next open, horizons 1, 5, 21 days, registered costs, rule-7 verdict, every event type counted as a trial, 2026 holdout. | A KILL or FORWARD per event type |
+| N5 | **New registered hypothesis `news_substantive_v1`** using only N3 `substantive`, `analyst` and `press_release` labels (the existing B4 rules stay untouched and keep logging). Registered only after N4 shows a candidate. | Registered file exists before its first signal |
+| N6 | **LLM role, bounded.** Only after N1-N5: an LLM may label or score headline text offline; it never places orders (ThetaGang pattern). | Not started |
+
+**Not claimed:** that news has an edge. The first backtest is allowed to say no.
+
 ### Decisions that are yours, not mine
 
 | Decision | What I found | My recommendation |
