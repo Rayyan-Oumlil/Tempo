@@ -26,12 +26,14 @@ def test_only_counted_purchases_are_rebuilt_in_the_live_shape():
               ("A3", "05-MAR-2024", "4", "0000555", "ACME", "1"),         # pre-planned 10b5-1
               ("A4", "05-MAR-2024", "4", "0000555", "ACME", "0"),         # a sale
               ("A5", "05-MAR-2024", "4", "0000555", "BRK.A", "0"),        # odd symbol
-              ("A6", "05-MAR-2024", "4", "0000555", "NONE", "0")],        # placeholder symbol
+              ("A6", "05-MAR-2024", "4", "0000555", "NONE", "0"),         # placeholder symbol
+              ("A7", "05-MAR-2024", "4", "0000555", "ACME", "0")],        # a stock award (code A), acquired but not a purchase
         owns=[("A1", "0000111", "Officer"), ("A1", "0000222", "10% Owner"), ("A2", "0000111", "Officer"), ("A3", "0000111", "Officer"),
-              ("A4", "0000111", "Officer"), ("A5", "0000111", "Officer"), ("A6", "0000111", "Officer")],
+              ("A4", "0000111", "Officer"), ("A5", "0000111", "Officer"), ("A6", "0000111", "Officer"), ("A7", "0000111", "Officer")],
         trns=[("A1", "04-MAR-2024", "P", "10000", "10", "A"), ("A2", "04-MAR-2024", "P", "10000", "10", "A"),
               ("A3", "04-MAR-2024", "P", "10000", "10", "A"), ("A4", "04-MAR-2024", "S", "10000", "10", "D"),
-              ("A5", "04-MAR-2024", "P", "10000", "10", "A"), ("A6", "04-MAR-2024", "P", "10000", "10", "A")])
+              ("A5", "04-MAR-2024", "P", "10000", "10", "A"), ("A6", "04-MAR-2024", "P", "10000", "10", "A"),
+              ("A7", "04-MAR-2024", "A", "10000", "10", "A")])
     (b,) = buys_from_zip(raw)
     assert b == {"accession": "A1", "filing_date": "2024-03-05", "trade_date": "2024-03-04", "issuer_cik": "0000555", "symbol": "ACME",
                  "owners": ["0000111", "0000222"], "officer_director": ["0000111"], "shares": 10000.0, "price": 10.0, "value": 100000.0}
@@ -110,3 +112,17 @@ def test_a_purchase_filed_more_than_a_year_after_the_trade_is_not_a_signal():
 def test_a_trade_dated_after_its_own_filing_is_a_typo_and_is_ignored():
     typo = dict(buy("a", "2024-03-05", "1", 80_000), trade_date="2027-03-01")
     assert signals([typo], INDEX, CAL, "2024-03-01")["insider_opportunistic_v1"] == []
+
+
+def test_a_purchase_line_that_is_a_disposition_is_not_counted():
+    raw = make_zip(subs=[("A1", "05-MAR-2024", "4", "0000555", "ACME", "0")], owns=[("A1", "0000111", "Officer")],
+                   trns=[("A1", "04-MAR-2024", "P", "10000", "10", "D")])
+    assert buys_from_zip(raw) == []
+
+
+def test_a_buy_signal_is_scored_long_so_a_rising_stock_has_a_positive_excess():
+    dates = weekdays("2024-01-01", "2024-06-28")
+    flat_spy = Series(dates, [100.0] * len(dates), [100.0 + (i % 3) * 0.1 for i in range(len(dates))], [1e6] * len(dates))
+    rising = Series(dates, [10.0 + 0.05 * i for i in range(len(dates))], [10.0 + 0.05 * i + 0.01 for i in range(len(dates))], [1e6] * len(dates))
+    trades, _ = to_trades([("2024-05-06", "UP")], flat_spy, {"UP": rising}.get)
+    assert trades and trades[0].gross > 0

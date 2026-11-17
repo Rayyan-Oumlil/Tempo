@@ -106,3 +106,35 @@ def test_only_test_years_count():
     early = [Trade(f"2019-01-{d:02d}", "X", 0.5) for d in range(1, 28)]
     v = judge(early + trades(2, lambda y, i: 0.01 * (1 if i % 2 else -1)), cost=0.002, horizon=5)
     assert v.decision == "KILL" and v.events == 360
+
+
+def test_the_hedge_uses_the_stocks_own_beta_not_one():
+    spy_close = noisy_closes(80)
+    spy = series(spy_close)
+    stock_close, px = [], 100.0
+    for i in range(80):
+        px = px * (1 + 2 * (spy_close[i] / spy_close[i - 1] - 1)) if i else px      # twice SPY's daily move: raw beta 2, shrunk 5/3
+        stock_close.append(px)
+    stock = series(stock_close)
+    spy.open[60], spy.close[65] = 100.0, 105.0
+    stock.open[60], stock.close[65] = 100.0, 110.0
+    assert trade_excess(stock, spy, spy.dates[60], 1, 5) == pytest.approx(0.10 - (5 / 3) * 0.05, abs=1e-3)
+
+
+def test_a_gross_edge_smaller_than_the_cost_is_killed_even_when_it_is_steady():
+    v = judge(trades(2, lambda y, i: 0.001 + 0.0002 * (1 if i % 2 else -1)), cost=0.002, horizon=5)
+    assert v.decision == "KILL" and v.mean_net < 0
+
+
+def test_significant_at_95_percent_but_below_the_t_bar_is_not_forward():
+    probe = judge(trades(2, lambda y, i: 0.03 + wobble(i)), cost=0.002, horizon=5)
+    se = probe.mean_net / probe.t
+    gross = 0.002 + 2.4 * se                                   # net t of about 2.4: past the interval test, short of 2.8
+    v = judge(trades(2, lambda y, i: gross + wobble(i)), cost=0.002, horizon=5)
+    assert v.ci[0] > 0 and 1.96 < v.t < 2.8
+    assert v.decision == "NOT PROVEN" and any("net t" in r for r in v.reasons)
+
+
+def test_a_year_that_beats_zero_gross_but_not_the_cost_counts_as_a_losing_year():
+    v = judge(trades(2, lambda y, i: (0.001 if y == "2024" else 0.05) + wobble(i) / 10), cost=0.002, horizon=5)
+    assert v.years["2024"][1] < 0 and v.decision == "NOT PROVEN" and any("2024" in r for r in v.reasons)

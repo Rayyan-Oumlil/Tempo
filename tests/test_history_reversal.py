@@ -52,3 +52,38 @@ def test_entries_before_first_or_after_the_cap_are_not_traded():
     universe, spy = world()
     trades, _ = reversal_trades(universe, spy, first="2024-04-01", last="2024-04-30")
     assert trades and all("2024-04-01" <= t.day <= "2024-04-30" for t in trades)
+
+
+def test_longs_are_the_losers_with_a_plus_sign_and_shorts_the_winners_with_a_minus_sign():
+    from tempo.history_core import trade_excess
+    from tempo.weekly_reversal import pick, r5
+    universe, spy = world()
+    trades, _ = reversal_trades(universe, spy, first="2024-04-01", last="2024-04-30")
+    first_entry = min(t.day for t in trades)
+    week_end = max(d for d in week_ends(spy.dates) if spy.dates[spy.pos[d] + 1] == first_entry)
+    longs, shorts = pick({s: r5(b, spy, week_end) for s, b in universe.items()})
+    got = {t.symbol: t.gross for t in trades if t.day == first_entry}
+    assert got[longs[0]] == trade_excess(universe[longs[0]], spy, first_entry, 1, 5)
+    assert got[shorts[0]] == trade_excess(universe[shorts[0]], spy, first_entry, -1, 5)
+
+
+def test_an_illiquid_or_penny_stock_never_enters_the_ranking():
+    universe, spy = world()
+    penny = [3.0 + 0.01 * i for i in range(len(spy.dates))]                    # under the 5 USD floor: the biggest "loser" if allowed
+    penny[-1] = 1.0
+    penny = [p * (0.2 if 20 < i < 90 else 1.0) for i, p in enumerate(penny)]
+    universe["PENNY"] = Series(spy.dates, penny, penny, [1e6] * len(penny))
+    thin = [100.0 - 0.5 * (i % 9) for i in range(len(spy.dates))]
+    universe["THIN"] = Series(spy.dates, thin, thin, [10.0] * len(thin))      # 1,000 USD a day: under the 5 million floor
+    trades, _ = reversal_trades(universe, spy, first="2024-03-01", last="2024-05-31")
+    assert trades and not {t.symbol for t in trades} & {"PENNY", "THIN"}
+
+
+def test_trades_without_an_exit_bar_are_counted_as_unscored_not_traded():
+    universe, spy = world()
+    week_end = next(d for d in week_ends(spy.dates) if d >= "2024-04-01")
+    cut = spy.pos[week_end] + 2                                          # bars end the day after the entry: no exit bar exists
+    short = {s: Series(b.dates[:cut], b.open[:cut], b.close[:cut], b.volume[:cut]) for s, b in universe.items()}
+    entry = spy.dates[spy.pos[week_end] + 1]
+    trades, counts = reversal_trades(short, spy, first=entry, last=entry)
+    assert trades == [] and counts["unscored"] == 20 and counts["scored"] == 0
