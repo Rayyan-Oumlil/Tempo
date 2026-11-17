@@ -148,18 +148,58 @@ All of `plan-argent-reel.md` section 1 stays (employer policy first). Added:
 * **Stop conditions** (any one): the blend's 120-day net excess is negative; deflated Sharpe below zero; tracking error above
   100 bps for 20 trades.
 
+### Workstream F: fast track, history first (owner decision 2026-11-16; verdicts by Friday 2026-11-20)
+
+**Why.** Forward testing needs about 120 signal days (April to May 2027) and the VPS costs about 15 to 20 USD a month, so waiting is
+paid for in money and in a horizon the owner may not have. History can KILL or SCREEN an idea in days and for free; it cannot CONFIRM
+one (survivorship flatters long legs, costs are assumed). So the fast track decides what is worth any further waiting; it does not
+replace the real-money gate in Workstream E, which stays unchanged.
+
+**Deliverables, Friday 2026-11-20 end of day.** (1) a verdict table, KILL or FORWARD, for every source; (2) one frozen "book" made only of
+survivors (equal-risk blend using the pure functions D2/D3/D4), or the plain statement "no book"; (3) a README section "Run the strategy"
+with the exact commands, working on the PC without the VPS; (4) the VPS decision with a date (cancel or keep); (5) a dated entry in
+`docs/research/log.md`. "Full strategy" means this and not a promise of profit. The honest outcomes are: **A** one or more survivors, so a
+book plus a cheap forward test on the PC; **B** none survive, so a documented no-go, the VPS cancelled and the repo kept as a research record;
+**C** the GPU model passes, which makes it a hypothesis for the forward test and nothing more.
+
+**Protocol, frozen 2026-11-16 before any run [J: chosen by me, as delegated; do not edit after a result, add a dated entry instead].**
+
+| # | Rule |
+|---|---|
+| 1 | **Rules are the live registered rules, untuned.** Any variant is a new hypothesis and is counted in H. |
+| 2 | **Hypotheses (H).** `insider_cluster_v1`, `insider_opportunistic_v1`, `weekly_reversal_v1`, and the GPU model M1 (every configuration tried counts, at most 20). Already dead by history: both earnings bands (C2), `short_volume_v1` (C1). `analyst_actions_v1` and B4 news have too little history (IBKR headline depth): forward only, on the PC, no cost, not part of Friday. |
+| 3 | **Data.** IBKR daily bars 2010-11-18 to 2025-12-31 (pulled on the VPS Gateway, copied to the PC), SEC Forms 3/4/5 quarterly sets 2018q1 to 2025q4 (extends the 2023q3 start so the 3-year routine window works), the frozen sector map. **Nothing from 2026 is used**: it stays a clean holdout for survivors. Universe is today's S&P 500, so long legs are flattered; say so in every table. |
+| 4 | **Split.** 2011 to 2022 development (only the GPU model trains here), 2023 to 2024 validation, 2025 test, **touched once per hypothesis**. Frozen-rule sources are not fitted, so they are measured on 2023, 2024 and 2025 separately and together. |
+| 5 | **Costs.** The registered per-source round trip (0.20% large, 0.60% small, 0.50% insider), then again at 1.5 times as a stress. |
+| 6 | **Measures.** Same as the live ledger: exec_v2 (beta-hedged excess over SPY), 5-day and 21-day horizons, entry-day cohorts, Newey-West standard errors with lag = horizon - 1. |
+| 7 | **KILL** if the net mean on the test years has a 95% interval whose lower bound is at or below zero. **FORWARD** only if all of: net t at least 2.8 (the plan's bar, close to Harvey-Liu-Zhu's 3), positive net mean in each of 2023, 2024 and 2025, still positive at 1.5 times cost, at least 200 events. FORWARD is a candidate for a forward test, never for real money. |
+| 8 | **GPU model.** Label = 5-day net excess return; features only what exists at the decision time (B6 features, event size, insider and short-volume fields); purged walk-forward with a 21-day embargo; a shuffled-label placebo must score about zero; it must beat the simple frozen rule on the same test year to count; every configuration is logged; the test year is read once. The GPU is not a reason to try more configurations. |
+| 9 | **Multiplicity.** Benjamini-Hochberg at 10% across H for the FORWARD list. |
+
+**Schedule.**
+
+| Day | Work |
+|---|---|
+| Tue 2026-11-17 | Protocol saved (this section and the log). Pull all bars and Form sets on the VPS Gateway (resumable; pacing limits), copy `data/` to the PC, verify counts. Back up the VPS ledger and journals. |
+| Wed 2026-11-18 | History verdicts for the three frozen-rule sources. Also the planned first check of closed 5-day paper trades against the ledger. |
+| Thu 2026-11-19 | GPU model M1 under rule 8, one shot on the test year. |
+| Fri 2026-11-20 | Verdict table, book definition, README "Run the strategy", VPS decision, log entry. |
+
+**Risks.** IBKR historical-data pacing or a dropped Gateway session mid-pull (the pull must resume); today's-constituent survivorship (upper bound, stated); insider classification of opportunistic trades needs the extra years of Form sets; a result that "wins" in history is a hypothesis, not a result.
+
 ---
 
 ## 4. Timeline and decisions
 
 | When | What | Decision it feeds |
 |---|---|---|
+| 2026-11-17 to 11-20 | **Workstream F, fast track**: history verdicts, GPU model, book, README, VPS cancel-or-keep | which sources deserve any further waiting; stop paying for a VPS that has nothing to run |
 | Next 48 hours | 0.1 to 0.4, A1; start C1 and C2 data pulls | deploy or not |
 | 2026-11-18 | first closed 5-day trades; first autopsy rows; first reconciliation | does paper track the ledger within 60 bps? |
 | By 2026-12-08 | A2, A3, B1, B3, B6, D2, D3 (dry run first), C1 and C2 verdicts | drop sources the history already killed |
 | 2026-12-08 | 31 insider positions exit; first 21-day scores | insider verdict stays provisional |
 | Mid-January 2027 | earnings season: first real sample for the small-cap band and B4 | does any event source clear t > 2.7? |
-| Apr to May 2027 | 120 signal days for `short_volume_v1` | first honest verdict on the fastest source |
+| Apr to May 2027 | 120 signal days for the fastest surviving source (`short_volume_v1` was killed by C1) | first honest forward verdict; only if Workstream F left a survivor |
 
 **Expected outcome, stated plainly [J]:** most sources will be dropped, which is a success of the instrument, not a failure.
 The deliverable that survives regardless of results is a reconciled, sequentially monitored, cost-aware research engine and a
