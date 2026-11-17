@@ -1,6 +1,6 @@
 """Fetch what the fast-track history still lacks (Workstream F).
 
-  python -m tempo.history_fetch sets   download the SEC Form sets 2020q1-2025q4 into data/insider_sets (no Gateway). It NEVER writes
+  python -m tempo.history_fetch sets   download the SEC Form sets 2019q1-2025q4 into data/insider_sets (no Gateway). It NEVER writes
                                        data/insider_routine.json: that file belongs to the live morning job.
   python -m tempo.history_fetch        fetch the daily bars (with open) the insider history still lacks.
 
@@ -35,7 +35,7 @@ def save(path: Path, rows: list[tuple[str, float, float, float]]) -> None:
 
 def fetch_sets() -> int:  # pragma: no cover - network
     from tempo.insider_history import _fetch_quarter
-    quarters = [f"{y}q{q}" for y in range(2020, 2026) for q in (1, 2, 3, 4)]
+    quarters = [f"{y}q{q}" for y in range(2019, 2026) for q in (1, 2, 3, 4)]
     for q in quarters:
         print(f"  {q}...", flush=True)
         _fetch_quarter(q)

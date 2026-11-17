@@ -26,7 +26,7 @@ SPY_FILE = DATA / "SPY_ohlc.csv"
 REPORT = DATA / "history" / "fast_track_report.json"
 FIRST_TEST_ENTRY = "2023-01-02"
 BUY_QUARTERS = ["2022q4"] + [f"{y}q{q}" for y in (2023, 2024, 2025) for q in (1, 2, 3, 4)]
-INDEX_YEARS = [2020, 2021, 2022, 2023, 2024]
+INDEX_YEARS = [2019, 2020, 2021, 2022, 2023, 2024]
 
 
 def load_spy(path: Path = SPY_FILE) -> Series:
