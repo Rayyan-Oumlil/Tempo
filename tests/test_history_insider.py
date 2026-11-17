@@ -98,3 +98,10 @@ def test_to_trades_counts_what_it_cannot_score_instead_of_guessing():
     have = {"OK": flat(dates), "SHORT": Series(dates[:50], [10.0] * 50, [10.0] * 50, [1e6] * 50)}
     trades, counts = to_trades([("2024-05-06", "OK"), ("2024-05-06", "GONE"), ("2024-05-06", "SHORT")], spy, have.get)
     assert counts == {"scored": 1, "no_bars": 1, "unscored": 1} and [t.symbol for t in trades] == ["OK"]
+
+
+def test_a_purchase_filed_more_than_a_year_after_the_trade_is_not_a_signal():
+    late = dict(buy("a", "2024-03-05", "1", 80_000), trade_date="2023-01-10")
+    assert signals([late], INDEX, CAL, "2024-03-01")["insider_opportunistic_v1"] == []
+    fresh = dict(buy("a", "2024-03-05", "1", 80_000), trade_date="2024-03-01")
+    assert signals([fresh], INDEX, CAL, "2024-03-01")["insider_opportunistic_v1"] == [("2024-03-06", "ACME")]

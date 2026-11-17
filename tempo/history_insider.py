@@ -4,6 +4,7 @@ Nothing is re-implemented: purchases are rebuilt from the quarterly zips in the 
 the live `clusters` and `opportunistic_signals` pick the signals. A signal as of trading day P is entered at the open of the next
 session (the live morning job records it before the 09:40 entry). One signal per issuer per 30 days, as live.
 
+Purchases filed more than 365 days after the trade are excluded (late filings nobody could act on).
 Limits, stated in every report: Form sets before April 2023 have no 10b5-1 flag (those purchases cannot be excluded); issuers that
 IBKR no longer lists have no bars and drop out (survivorship flatters the result); entries stop on 2025-12-23 so no 2026 price is used.
 """
@@ -22,6 +23,8 @@ from tempo.history_core import Series, Trade, trade_excess
 
 LAST_ENTRY = "2025-12-23"      # a 5-session exit then lands on or before 2025-12-31: the 2026 holdout is never read
 HORIZON = 5
+MAX_LAG_DAYS = 365   # a purchase filed more than a year after the trade is a late, non-actionable filing (decided 2026-11-16, before any result);
+                     # the live opportunistic rule would also raise HistoryMissing on one whose trade year the routine index does not cover
 WINDOW_DAYS = max(cluster_rule.WINDOW_DAYS, opp_rule.WINDOW_DAYS)
 SOURCES = {"insider_cluster_v1": cluster_rule.ROUND_TRIP_COST, "insider_opportunistic_v1": opp_rule.ROUND_TRIP_COST}
 
@@ -78,7 +81,8 @@ def signals(buys: list[dict], index: dict, calendar: list[str], first: str, last
     """source -> [(entry day, symbol)] for every signal whose entry session lies in [first, last]."""
     by_date: dict[str, list[dict]] = defaultdict(list)
     for b in buys:
-        by_date[b["filing_date"]].append(b)
+        if (date.fromisoformat(b["filing_date"]) - date.fromisoformat(b["trade_date"])).days <= MAX_LAG_DAYS:
+            by_date[b["filing_date"]].append(b)
     out: dict[str, list[tuple[str, str]]] = {s: [] for s in SOURCES}
     last_signal: dict[str, dict[str, date]] = {s: {} for s in SOURCES}
     for k in range(len(calendar) - 1):
