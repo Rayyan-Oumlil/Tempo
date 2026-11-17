@@ -41,10 +41,11 @@ def _rows(z: zipfile.ZipFile, name: str) -> Iterator[dict]:
 
 def purchase_months_from_zip(raw: bytes) -> dict[str, set[str]]:
     """Owner CIK -> months with a counted purchase: Form 4 (not an amendment), not 10b5-1, plain letters-only symbol,
-    owner an officer or director, transaction code P, acquired, shares and price above zero."""
+    owner an officer or director, transaction code P, acquired, shares and price above zero. Sets filed before April 2023 have no
+    10b5-1 column: those rows cannot be excluded (a known limit of any history before then)."""
     z = zipfile.ZipFile(io.BytesIO(raw))
     counted = {r["ACCESSION_NUMBER"] for r in _rows(z, "SUBMISSION.tsv")
-               if r["DOCUMENT_TYPE"] == "4" and r["AFF10B5ONE"].strip().lower() not in ("1", "true")
+               if r["DOCUMENT_TYPE"] == "4" and r.get("AFF10B5ONE", "").strip().lower() not in ("1", "true")
                and LETTERS.match(r["ISSUERTRADINGSYMBOL"].strip().upper() or "-")}
     owners: dict[str, list[str]] = {}
     for r in _rows(z, "REPORTINGOWNER.tsv"):
