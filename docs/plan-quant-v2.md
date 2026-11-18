@@ -237,6 +237,32 @@ documented record of what was killed and why.
 | N3 | **Quality labels** (deterministic, no model): `roundup` (same text on 10 or more symbols in a day), `auto_move` (a "Stock Slips/Falls/Sheds/Rises X%" line), `analyst` (price target or rating), `filing` (13F, insider, 8-K), `press_release`, `substantive` (the rest). | Labels stored beside each headline; counts per day in the report |
 | N4 | **History backtest, two sources, protocol frozen before running.** (a) FNSPID headlines 1999-2023 (CC BY-NC-4.0, personal research; download started 2026-11-17; first check: timestamp precision and coverage); (b) SEC 8-K item types (2.02, 5.02, 1.01, 2.01, 8.01) with exact filing times. Entry next open, horizons 1, 5, 21 days, registered costs, rule-7 verdict, every event type counted as a trial, 2026 holdout. | A KILL or FORWARD per event type |
 | N5 | **New registered hypothesis `news_substantive_v1`** using only N3 `substantive`, `analyst` and `press_release` labels (the existing B4 rules stay untouched and keep logging). Registered only after N4 shows a candidate. | Registered file exists before its first signal |
+
+**N4a protocol, frozen 2026-11-17 (night) BEFORE any headline was joined to any return [J: chosen by me, as delegated; do not edit after a result, add a dated entry].**
+Source: FNSPID `All_external.csv` (5.73 GB, 2009-2023, mostly Benzinga/Reuters headlines tagged with a ticker). Replays the registered B4 legs on history; nothing is fitted.
+
+| # | Rule |
+|---|---|
+| 1 | **Event.** Stock-day D with |close-to-close return minus SPY's| >= 5%, liquid (close >= 5 USD, 20-day dollar volume >= 5M, the live `liquid`). Signal at the close of D, entry next session open, exit 5 sessions later (rule 7 horizon). Earnings days excluded where an 8-K 2.02 is known (else counted in the report as a limit). One signal per symbol per 30 days. |
+| 2 | **Headline window.** Headlines timed after 16:00 ET the previous session up to 16:00 ET of D (UTC timestamps converted with the real ET rules). Rows stamped exactly 00:00:00 UTC have no time of day; see AMENDMENT 1 below (originally they were dropped). Labels are the deterministic N3 labels (`tempo.news_labels`); `roundup` and `auto_move` never count as a headline. |
+| 3 | **Trials (T = 6, all counted).** (1) news_any: >= 1 counted headline, follow the move. (2) news_substantive, (3) news_analyst, (4) news_press_release, (5) news_filing: >= 1 headline of that label, follow the move. (6) no_news_fade: zero counted headlines AND the symbol-year has >= 50 headlines in the archive (so a gap in coverage is not read as silence), FADE the move. Up and down moves are reported separately, not tested separately. |
+| 4 | **Split.** Development 2017-2018 and validation 2019-2021 only check that the code behaves (bars with an open exist for 563 symbols before 2021). **Test = entries in 2022 and 2023, touched once.** 2024 onward is not in the archive: the live B4 collector is the holdout. |
+| 5 | **Costs.** 0.20% round trip, then 1.5x. Same exec_v2 beta-hedged excess as every other source. |
+| 6 | **Verdict.** `history_core.judge` rule 7 with years = (2022, 2023): KILL if the 95% interval of the net mean reaches zero; FORWARD only if t >= 2.8, positive in both years, positive at 1.5x cost, >= 200 events. Benjamini-Hochberg at 10% across the six trials. |
+| 7 | **Placebo.** The same pipeline with each headline's date shifted by a random +-30 days must give KILL for every trial; if a placebo passes, the pipeline is broken and no result counts. |
+| 8 | **Limits stated in the report.** Current-constituent bars (survivorship flatters long legs); archive coverage thins for small names; headline time is the provider's, a headline can lag the move that caused it. |
+
+**N4a AMENDMENT 1, 2026-11-17 (night), made after extracting the archive and BEFORE any headline was joined to any return.** The timestamp check found that of
+about 1.1M archive rows for symbols with bars, only 11,198 carry a time of day; the rest are date-only (00:00:00 UTC). Dropping them (rule 2 as first written)
+would leave too little data to test anything, so: a date-only headline dated X counts for session = the first session on or after X. This creates no look-ahead,
+because the entry is the next session's open and anything published on X is known by then; the cost is that a headline published after the close is credited to
+the same day's move (attribution noise, stated as a limit). Timed rows keep the exact 16:00 ET window. Nothing else changes; no return, event count or verdict had been seen.
+
+**N4a AMENDMENT 2, 2026-11-17 (night), made before any return, mean or verdict of this study was seen.** The archive has no headline after 2020 for any symbol
+that has bars (headlines per year: 2016 113k, 2017 100k, 2018 163k, 2019 191k, 2020 91k; nothing later), so rule 4's test years 2022-2023 hold zero events.
+Test = entries in **2019 and 2020**, touched once (`TEST_YEARS = ("2019", "2020")`); 2017 is development (code check) and 2018 validation. Rule 6 reads years = (2019, 2020).
+Everything else is unchanged. Consequence stated up front: the test period is older and shorter than planned, includes the 2020 crash, and bars with an open exist
+before 2021 only for the 563 shortvol symbols, so the universe is those names. 2021 onward is untested here and is covered only by the live B4 collector.
 | N6 | **LLM role, bounded.** Only after N1-N5: an LLM may label or score headline text offline; it never places orders (ThetaGang pattern). | Not started |
 
 **Not claimed:** that news has an edge. The first backtest is allowed to say no.
@@ -395,3 +421,24 @@ through February; over 80% that the project helps a quant or software career [J,
 * IBKR Canada commissions: https://www.interactivebrokers.ca/en/pricing/commissions-stocks.php
 * IBKR Canada market data pricing: https://www.interactivebrokers.ca/en/pricing/research-news-marketdata.php
 * Spread intraday pattern (Chan, Chung, Johnson 1995): https://ideas.repec.org/a/cup/jfinqa/v30y1995i03p329-346_00.html
+
+
+### Workstream M: cross-sectional ML ranking, "let the model decide" (owner request 2026-11-17; protocol frozen BEFORE any model was fitted or any return seen)
+
+**Why.** Owner: the earlier history tests may have been weak, and the model, not fixed rules, should decide. Research read the same day: single-rule tests have little power (intervals about +-0.8% per 5-day trade), cross-sectional event studies understate standard errors (Cohn et al. 2024), and the standard way to test a model that ranks a whole universe is purged walk-forward validation (Lopez de Prado). This workstream does that on the data we already hold. It is a screening test on free daily data: FORWARD would mean "worth a forward test", never real money.
+
+| # | Rule |
+|---|---|
+| M1 | **Data.** Daily bars with open (merged `data/history/fast/bars` and `data/history/shortvol/bars`), SPY, SEC Form 4 purchases (2019q1-2025q4, `history_insider.buys_from_zip`, available from the filing date). Panel 2019-01-02 to 2025-12-31 (bars from 2018 for feature history). **Nothing from 2026.** Universe per session: close >= 5 USD, 20-day dollar volume >= 5M, >= 126 sessions of history. Today's constituents: long legs are flattered, said in every table. |
+| M2 | **Features (fixed list, all known at the close of day t).** r1, r5, r21, r63, r126, mom_12_1 (close t-21 over close t-252), vol21, vol63, log dollar volume 20d, volume ratio (v over 20-day mean), gap (open t over close t-1), intraday (close/open t), distance to 252-day high, beta60, insider buys in 30 days (count, log value, officer/director count) and days since the last filed purchase (cap 365). Each feature is rank-normalised across the day's universe. No other feature may be added after a result. |
+| M3 | **Label.** Cross-sectional rank of the 5-session forward excess return: open t+1 to close t+6 (the same entry and exit as `history_core.trade_excess`, horizon 5) minus SPY's over the same window. Trades are scored beta-hedged with the shrunk 60-day beta, as in exec_v2. |
+| M4 | **Validation.** Expanding window; test years 2022, 2023, 2024, 2025, each predicted by a model trained only on days before the test year minus a 10-session purge. Hyperparameters fixed below, **never tuned**; one fit per fold. |
+| M5 | **Models (T = 3, all counted).** (a) LightGBM regression: 300 trees, learning rate 0.03, 31 leaves, min 500 rows per leaf, row and column subsample 0.7, seed 7. (b) Ridge on the same features, alpha 1000. (c) `reversal_rank`: no fit, score = minus the r5 rank (the weekly-reversal idea on the whole universe). **Placebo:** model (a) trained on labels permuted within each day, must give no edge. |
+| M6 | **Books (6 = 3 models x {long-short, long-only}).** Each session: top K and bottom K by score, K = min(50, 10% of that day's universe, at least 10). Entry next open, exit 5 sessions later. Long-short = top long, bottom short; long-only = top only (beta-hedged, so it is excess over SPY). Registered cost 0.20% per trade round trip, then 1.5x. |
+| M7 | **Verdict.** `history_core.judge` rule 7 on 2022-2025, cohorts are entry days, Newey-West lag 6 (cohorts overlap for 6 days; the shorter lag used for single rules was too small), FORWARD needs t >= 2.8, positive net mean in each test year, positive at 1.5x cost, >= 200 events. Benjamini-Hochberg at 10% across the 6 books. The deflated Sharpe ratio is NOT computed (overlapping cohorts make its inputs ambiguous): the t bar of 2.8 plus BH is the multiple-testing guard. Also reported, not criteria: mean daily rank IC with its Newey-West t, per-year net means. |
+| M8 | **Re-test of the single rules.** (R1) `weekly_reversal_v1` replayed on the same merged universe (about 2,200 symbols) instead of the 563 short-volume symbols, test 2023-2025 as before. (R2) insider rules are unchanged: 442 and 737 signals have no bars at all (survivorship); that gap cannot be closed with free data and is stated. |
+| M9 | **Placebo gate.** If the placebo book (permuted labels) passes FORWARD, the pipeline is broken and no result counts. |
+
+Limits stated up front: survivorship (today's constituents and still-listed issuers), daily bars only (no intraday, no borrow data), 2019-2020 has 563 symbols with an open price before 2021 brings the rest, features that do not exist before 2021 for most names, a 4-year out-of-sample span.
+
+**M10 (added 2026-11-17 before any model was fitted): universe-selection check.** The 2021-onward bar files were fetched for symbols that appeared in 2023-2025 insider-purchase signals (`missing_symbols.json`), so the main panel's universe is partly selected on future insider activity (it grows from about 520 names a day in 2019-2021 to 900-1,260 in 2022-2025). The main run stays exactly as frozen. A **core run** repeats it on the 563 symbols of `data/history/shortvol/bars` (chosen independently of insider signals). A FORWARD in the main run counts only if the core run's net mean is also positive for the same book; otherwise the main result is treated as an artifact of universe selection.
