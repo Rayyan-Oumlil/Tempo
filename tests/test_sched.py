@@ -142,7 +142,7 @@ def test_the_evening_job_commits_the_ledger_only_when_it_changed(tmp_path):
                  notify=rec.notify, log=rec.log, alerts_path=tmp_path / "a.json")
     assert rc == 0
     names = [a[0] if a[0] == "git" else a[-1] for a in seen]
-    assert names == ["tempo.earnings_reaction", "tempo.analyst_actions", "tempo.weekly_reversal", "tempo.news_split", "tempo.ledger_score", "tempo.ledger", "git", "git", "git", "git"]   # add, diff, commit, push
+    assert names == ["tempo.earnings_reaction", "tempo.analyst_actions", "tempo.weekly_reversal", "tempo.news_split", "tempo.ledger_score", "tempo.ledger", "git", "git", "git", "git", "git"]   # add, diff, commit, pull --rebase, push
     seen.clear()
     run_job("evening", now=et(ENTRY, 16, 20), ledger=make_ledger(tmp_path), paper=Journal(tmp_path / "p.jsonl"), run=lambda st: (seen.append(st.argv), (0, "ok"))[1],
             notify=rec.notify, log=rec.log, alerts_path=tmp_path / "a.json")

@@ -143,7 +143,9 @@ def _commit_ledger(run: Callable[[Step], tuple[int, str]], today: date) -> tuple
         return rc, out
     if run(Step(("git", "diff", "--cached", "--quiet")))[0] == 0:
         return 0, "ledger unchanged"
-    for argv in (("git", "commit", "-m", f"ledger: scores as of {today.isoformat()} (scheduled run)"), ("git", "push")):
+    # Rebase onto origin first: a push from the PC would otherwise make every later ledger push non-fast-forward (2026-11-18).
+    for argv in (("git", "commit", "-m", f"ledger: scores as of {today.isoformat()} (scheduled run)"),
+                 ("git", "pull", "--rebase", "--autostash"), ("git", "push")):
         rc, out = run(Step(argv))
         if rc:
             return rc, out
