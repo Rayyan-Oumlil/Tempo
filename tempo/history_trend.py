@@ -90,9 +90,12 @@ def weights_at(kind: str, closes: pd.DataFrame, i: int) -> pd.Series:
     raise ValueError(f"unknown rule {kind}")
 
 
-def backtest(kind: str, closes: pd.DataFrame, cost: float = COST) -> pd.Series:
-    """Daily net return series. Rebalance at the close after each month-end signal; turnover is measured against drifted weights."""
+def backtest(kind: str, closes: pd.DataFrame, cost: float = COST, cash_daily: pd.Series | None = None) -> pd.Series:
+    """Daily net return series. Rebalance at the close after each month-end signal; turnover is measured against drifted weights.
+
+    cash_daily (Workstream H): daily return earned by the uninvested fraction; None keeps cash at 0 (Workstream G)."""
     rets = closes.pct_change().fillna(0.0).to_numpy()
+    cash = np.zeros(len(closes)) if cash_daily is None else cash_daily.reindex(closes.index).fillna(0.0).to_numpy()
     n = len(closes)
     signals = month_end_positions(closes.index)
     out = np.zeros(n)
@@ -104,7 +107,7 @@ def backtest(kind: str, closes: pd.DataFrame, cost: float = COST) -> pd.Series:
             new = weights_at(kind, closes, sig_at[t]).to_numpy()
             out[t] -= cost * float(np.abs(new - cur).sum())  # traded at the close of day t, after that day's return
             pending = (t, new)
-        gain = float(cur @ rets[t])
+        gain = float(cur @ rets[t]) + (1.0 - float(cur.sum())) * cash[t]
         out[t] += gain
         grown = cur * (1 + rets[t])
         cur = grown / (1 + gain) if (1 + gain) != 0 else grown
