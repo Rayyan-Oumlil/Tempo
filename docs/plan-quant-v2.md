@@ -1,5 +1,7 @@
 # Plan v2: making Tempo a research instrument that can actually find (or kill) an edge
 
+> **Superseded as the top-level direction on 2026-11-23 by [plan-multi-asset.md](plan-multi-asset.md).** This file stays as the record of the stock work and every frozen protocol (F, G, H, M, N, X).
+
 Written 2026-11-12 night, after the first full paper day. Replaces nothing: `plan-argent-reel.md` (gates to real money) and
 `plan-vps-edge.md` still stand. This plan is about the **research engine**, from the point of view of someone who has to
 decide where 20,000 USD goes and wants to know, honestly, whether anything here earns more than it costs.

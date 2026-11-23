@@ -11,6 +11,7 @@
 | [research/what-people-do.md](research/what-people-do.md) | What people actually run (tactical allocation, trend, options income, insider and LLM signals, prop firms), with what survives scrutiny. Claims tagged by source quality. |
 | [runbook.md](runbook.md) | How to operate everything day to day, the first live run of the paper runner, what to do when something fails, and the rules that must not be bent. |
 | [plan-to-friday.md](plan-to-friday.md) | The code-quality plan for the days the Gateway is unavailable, with what is done. |
+| [plan-multi-asset.md](plan-multi-asset.md) | **Plan v3 (current direction, 2026-11-23):** from a stock bot to a multi-asset system (gold, crypto, commodities, bonds), the test queue, the global trial counter and the stop rule. |
 | [roadmap.md](roadmap.md) | What's built, what's next, and the gate before any real money. |
 | [research/resources.md](research/resources.md) | Repos, books, courses, papers and reality checks, with what to read first. |
 | [research/youtube-transcripts-analysis.md](research/youtube-transcripts-analysis.md) | What we learned from 14 YouTube videos and which claims to doubt. |

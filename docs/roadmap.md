@@ -30,6 +30,8 @@ State: **flat**, no open orders.
 
 ## Next
 
+> **Direction changed 2026-11-23:** the top-level plan is now [plan-multi-asset.md](plan-multi-asset.md) (gold, crypto, commodities, bonds; stock research closed as KILL). The numbered items below are the earlier stock-era list, kept as the record.
+
 Foundations are hardened and the first feature, the daily loss limit, is built.
 
 1. **Done 2026-11-03, 09:55 ET: live suite, 7 of 7 passing** (OCA-aware exit room, "flatten says why", the daily-loss exits all proven live). Honest record of the day: run 1 gave 7 errors (the Gateway accepted the socket but the API handshake timed out, transient; health check connected a minute later); run 2 gave 6 passed and 1 error (a `TimeoutError` in the crash-and-reconcile test, cause NOT found because that traceback was not kept; the test passed alone in 9 s); run 3 gave 7 passed. The account was flat with no open orders after each run. Open question: why one live connection timed out under the full suite.
