@@ -100,6 +100,7 @@ def run_once(ib, contract, sig: X4Signal, sleeve_usd: float, live: bool, sender,
 
 
 def main() -> int:  # pragma: no cover - needs the Gateway
+    from dotenv import load_dotenv
     from ib_async import Crypto
 
     from tempo.account import equity_usd
@@ -108,6 +109,7 @@ def main() -> int:  # pragma: no cover - needs the Gateway
     from tempo.ibutil import default_journal, default_limits
     from tempo.orders import place, record_outcome
 
+    load_dotenv()
     now = datetime.now(timezone.utc)
     live, sleeve = parse_env(dict(os.environ))
     sig = compute_signal(fetch_closes())
