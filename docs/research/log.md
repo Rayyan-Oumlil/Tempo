@@ -467,3 +467,6 @@ Limits as registered: two hindsight-selected coins, one path, assumed costs, dai
 
 ### 2026-11-23 (night, later): Y1 closed, Y1b not run; Gateway probe written
 Y1 is closed as "not a candidate". The planned Y1b (excess-Sharpe and equal-risk test) was NOT registered or run: the diagnostics above already show Sharpe over cash 0.55 against 60/40's 0.60, so a new test would add a trial to the counter (it stays at 12) for an answer already seen. `tempo/probe_assets.py` written (read-only, no order path, 4 tests) so the first thing X4 needs, whether this paper account can trade BTC at all, is answered by one command on a machine with the Gateway. Not run here (no Gateway in the container).
+
+### 2026-11-23 (night, later): Workstream Z frozen before any Z number (owner "approve, freeze it")
+Protocol written into plan v2 first (Workstream Z): X4 rule unchanged on ETH, LTC, BCH (Z1a-c), turn-of-month on SPY (Z2), USMV against SPY (Z3), plus a no-verdict independence diagnostic (Z0). N goes from 12 to 17 when the five trials run. Before the freeze: read-only Paxos probe (ETH, LTC, BCH qualify; AVAX error 200; LINK and SOL qualify but are not added), Yahoo and FRED data re-pulled with date ranges checked only, and the unchanged X4 reproduced to the logged numbers (Sharpe 1.38, CAGR 51.8%, max drawdown -38.6%). No Z return has been computed.
