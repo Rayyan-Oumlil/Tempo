@@ -54,7 +54,7 @@ Queue rule: stop adding hypotheses when the global N reaches 20 without a PASS. 
 |---|---|
 | X4 vol-targeted BTC trend | **PASS** (Sharpe 1.38 vs 1.10 buy and hold, max drawdown -39%, all frozen checks); the first candidate of the project. Needs the paper probe (step 5 below) before any paper trade. |
 | X5 signal-speed grid | ROBUST: all 8 cells beat buy and hold, minimum Sharpe 0.90. |
-| Y1 cross-asset trend | PASS under the frozen rule but flattered (mostly cash; Sharpe over cash 0.55 < 60/40's 0.60). Not a candidate; Y1b (excess Sharpe, equal risk) to be registered as trial 13. |
+| Y1 cross-asset trend | PASS under the frozen rule but flattered (mostly cash; Sharpe over cash 0.55 < 60/40's 0.60). **Closed as not a candidate.** Y1b was dropped, not run: the excess-Sharpe diagnostic already showed the answer, so a new registered test would only burn a trial (counter stays 12). |
 | Global trial counter | 12. Stop rule at 20 unchanged. |
 
 ## 5. Engineering changes (in order, none touches the order door yet)
@@ -63,7 +63,7 @@ Queue rule: stop adding hypotheses when the global N reaches 20 without a PASS. 
 2. **One data layer**: IBKR bars when a Gateway is available, Yahoo/FRED fallback (already used in H and X) with the source recorded in each result; cached outside git.
 3. **One report runner**: a registered protocol file in `evidence/` per workstream, one command prints verdict plus the global N and the DSR at that N.
 4. **Execution generalisation, only after a PASS**: `Stock(...)` hard-coded in about 20 modules becomes a contract factory (stock, metals, crypto, future); market-hours and risk rules become per-sleeve (crypto is 24/7, so "regular hours only" and the daily-loss window need a sleeve-aware definition).
-5. **Probe on the paper Gateway before relying on any of it** (not verified, not assumed): is spot gold (XAUUSD) tradable on this account, are crypto and futures permissions available to a CAD-resident paper account, what market-data subscriptions each needs, and what fees apply.
+5. **Probe on the paper Gateway before relying on any of it** (not verified, not assumed). Tool written 2026-11-23: with the Gateway on the paper account and Read-Only API ticked, run `python -m tempo.probe_assets` on the PC (or `--only BTC`). It qualifies spot gold (XAUUSD), micro gold, BTC and ETH spot via Paxos, the micro bitcoin future and a GLD control, then asks for details, history start, ten daily bars and a delayed snapshot, printing every IB error code. Paste the output into `docs/ibkr-gotchas.md`. It cannot place an order (a test greps for that). Questions it answers: is spot gold (XAUUSD) tradable on this account, are crypto and futures permissions available to a CAD-resident paper account, what market-data subscriptions each needs, and what fees apply.
 
 ## 6. What happens to the stock work
 

@@ -19,6 +19,7 @@ Day / swing / active trading on an **Interactive Brokers paper account**. Python
 | `python -m tempo.smoke [SYMBOL]` | Read-only API tests: qualify, contract details, snapshot, history start, daily bars | no |
 | `python -m tempo.size SYMBOL STOP` | Shares allowed by `rules.json` for a long trade | no |
 | `python -m tempo.reconcile [--accept-missing]` | Match journal entries with the broker's orders and fills; clears or reports unresolved ones | no |
+| `python -m tempo.probe_assets [--only NAME]` | Read-only: can this paper account see spot gold, micro gold, BTC/ETH spot, micro bitcoin futures (contract, history, snapshot)? Plan v3 step 5 | no |
 | `python -m tempo.state [normal\|reduce_only] [why]` | Show or set the trading mode | no |
 | `python -m tempo.data SYMBOL [YEARS]` | Download daily bars to `data/` | no |
 | `python -m tempo.evidence SYMBOL [SMA_WINDOW]` | Backtest baselines and a trend rule on saved bars, with a shuffled-data control | no |
