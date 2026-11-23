@@ -115,3 +115,69 @@ A paper account only simulates fees. Check the real fee schedule before going li
 - `reqNewsProviders` lists 8 free providers: BRFG, BRFUPDN (Briefing.com), DJ-N, DJ-RTA, DJ-RTE, DJ-RTG, DJ-RTPRO, DJNL (Dow Jones). Per-stock headlines come mostly from DJ-N (Dow Jones Global Equity Trader).
 - `reqHistoricalNews(conId, "BRFG+...", "", "", 300)` returns up to 300 headlines, newest same-day. **With a start/end window the results are wrong** (headlines from before the start come back). Pass empty start/end and filter by `time` yourself.
 - `reqNewsArticle(providerCode, articleId)` returns the text (about 4,500 characters for a Barron's piece).
+
+## Non-stock instruments probe (2026-11-23, paper, read-only)
+Ran `python -m tempo.probe_assets` on the VPS (Gateway under IBC, paper account, Monday about 08:00 ET), from a throwaway git worktree of branch `claude/dreamy-noether-o6e1wy`. No order was placed, cancelled or previewed. It proves **data visibility only**: whether the account may trade these instruments (permissions, region) is not tested.
+
+| Instrument | Can qualify | History | Delayed price | Error codes |
+|---|---|---|---|---|
+| GLD (control, stock) | yes | TRADES from 2004-11-18 | yes (331.47) | 10167 info: delayed shown |
+| XAUUSD spot gold (CMDTY, SMART) | yes | MIDPOINT from 2010-06-08 | yes (3617.26), no 10167 | none |
+| MGC micro gold future (COMEX, first expiry 2026-12-29) | yes | TRADES from 2024-12-30 (that one contract) | yes (3616.3) | 10167 info |
+| BTC spot (CRYPTO, PAXOS) | yes | AGGTRADES from 2019-03-13 | yes (61259.75), no 10167 | 10299 on first run only (probe bug, see below) |
+| ETH spot (CRYPTO, PAXOS) | yes | AGGTRADES from 2019-03-12 | yes (1721.78), no 10167 | 10299 on first run only |
+| MBT micro bitcoin future (CME, first expiry 2026-12-24) | yes | TRADES from 2024-12-29 (that one contract) | yes (61330) | 10167 info |
+
+- **Probe bug, fixed in `tempo/probe_assets.py`:** Paxos crypto history requires `whatToShow=AGGTRADES`. With `TRADES` IB answers **10299 "Expected what to show is AGGTRADES"** and returns no bars (first run: 2 FAIL, BTC and ETH daily bars). A small `_what_to_show` helper now picks MIDPOINT for CMDTY, AGGTRADES for CRYPTO, TRADES otherwise. Rerun: 0 failures.
+- **10167 is not a failure.** "Requested market data is not subscribed. Displaying delayed market data." means no live subscription for that exchange (US stocks, COMEX, CME); delayed data still works. Spot gold and Paxos crypto returned a price without it.
+- **Futures history is per contract.** MGC and MBT go back only to the first listing (Dec 2024) for one expiry. A long futures trend test needs stitching expiries (`ContFuture`), not shown here. Spot BTC (2019) and XAUUSD (2010) have the long history.
+- **Lesson:** a contract that qualifies and returns delayed prices does not mean it can be traded. Trading permissions (futures, crypto) are a separate account setting and the paper account inherits them from the live one.
+
+Raw output of the final full run (all six, after the fix):
+```
+== GLD (control: stock)
+  [OK] contract details   GLD STK SMART conId=51529211 expiry=- minTick=0.01 sizeIncrement=0.0001 tz=US/Eastern
+  [OK] history start      earliest data: 2004-11-18 09:00:00
+  [OK] daily bars (10D)   10 bars (TRADES), last 2026-11-23 close=331.47
+  [OK] delayed snapshot   price=331.47 bid=331.42 ask=331.52  IB: [10167] Requested market data is not subscribed. Displaying delayed market data.
+
+== XAUUSD spot gold
+  [OK] contract details   XAUUSD CMDTY SMART conId=69067924 expiry=- minTick=0.01 sizeIncrement=1.0 tz=US/Eastern
+  [OK] history start      earliest data: 2010-06-08 21:15:00
+  [OK] daily bars (10D)   10 bars (MIDPOINT), last 2026-11-23 close=3617.08
+  [OK] delayed snapshot   price=3617.26 bid=3617.18 ask=3617.34
+
+== MGC micro gold future
+  [OK] contract details   MGC FUT COMEX conId=751494403 expiry=20261229 minTick=0.1 sizeIncrement=1.0 tz=US/Eastern
+  [OK] history start      earliest data: 2024-12-30 23:00:00
+  [OK] daily bars (10D)   10 bars (TRADES), last 2026-11-23 close=3616.3
+  [OK] delayed snapshot   price=3616.3 bid=3616.1 ask=3616.4  IB: [10167] Requested market data is not subscribed. Displaying delayed market data.
+
+== BTC spot (Paxos)
+  [OK] contract details   BTC CRYPTO PAXOS conId=479624278 expiry=- minTick=0.25 sizeIncrement=1e-08 tz=US/Eastern
+  [OK] history start      earliest data: 2019-03-13 20:01:00
+  [OK] daily bars (10D)   10 bars (AGGTRADES), last 2026-11-23 close=61258.5
+  [OK] delayed snapshot   price=61259.75 bid=61259.5 ask=61260.0
+
+== ETH spot (Paxos)
+  [OK] contract details   ETH CRYPTO PAXOS conId=495759171 expiry=- minTick=0.05 sizeIncrement=1e-08 tz=US/Eastern
+  [OK] history start      earliest data: 2019-03-12 20:01:00
+  [OK] daily bars (10D)   10 bars (AGGTRADES), last 2026-11-23 close=1719.65
+  [OK] delayed snapshot   price=1721.775 bid=1721.75 ask=1721.8
+
+== MBT micro bitcoin future
+  [OK] contract details   MBT FUT CME conId=751357006 expiry=20261224 minTick=5.0 sizeIncrement=1.0 tz=US/Central
+  [OK] history start      earliest data: 2024-12-29 23:00:00
+  [OK] daily bars (10D)   10 bars (TRADES), last 2026-11-23 close=61270.0
+  [OK] delayed snapshot   price=61330.0 bid=61300.0 ask=61330.0  IB: [10167] Requested market data is not subscribed. Displaying delayed market data.
+
+0 failed test(s).
+```
+First run, before the fix (BTC and ETH only differ):
+```
+Error 10299, reqId 690: Expected what to show is AGGTRADES, please use that instead of TRADES., contract: Contract(secType='CRYPTO', conId=479624278, symbol='BTC', exchange='PAXOS', ...)
+  [OK] history start      earliest data: []  IB: [10299] Expected what to show is AGGTRADES, please use that instead of TRADES.
+  [FAIL] daily bars (10D)   RuntimeError: no daily bars returned  IB: [10299] Expected what to show is AGGTRADES, please use that instead of TRADES.
+(ETH: same, reqId 695/696, conId=495759171)
+2 failed test(s).
+```

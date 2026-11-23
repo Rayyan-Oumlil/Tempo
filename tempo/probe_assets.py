@@ -40,6 +40,10 @@ def _resolve(ib: IB, make: Callable[[], Contract]) -> Contract:
     return details[0].contract  # a futures request returns several expiries: the first is enough for a probe
 
 
+def _what_to_show(contract: Contract) -> str:
+    return {"CMDTY": "MIDPOINT", "CRYPTO": "AGGTRADES"}.get(contract.secType, "TRADES")
+
+
 def probe_one(ib: IB, name: str, make: Callable[[], Contract]) -> list[Result]:
     holder: dict[str, Contract] = {}
 
@@ -50,10 +54,10 @@ def probe_one(ib: IB, name: str, make: Callable[[], Contract]) -> list[Result]:
         return f"{c.symbol} {c.secType} {c.exchange} conId={c.conId} expiry={c.lastTradeDateOrContractMonth or '-'} minTick={d.minTick} sizeIncrement={getattr(d, 'sizeIncrement', '?')} tz={d.timeZoneId}"
 
     def head(ib: IB, _: str) -> str:
-        return f"earliest data: {ib.reqHeadTimeStamp(holder['c'], whatToShow='MIDPOINT' if holder['c'].secType in ('CMDTY',) else 'TRADES', useRTH=False)}"
+        return f"earliest data: {ib.reqHeadTimeStamp(holder['c'], whatToShow=_what_to_show(holder['c']), useRTH=False)}"
 
     def bars(ib: IB, _: str) -> str:
-        what = "MIDPOINT" if holder["c"].secType in ("CMDTY",) else "TRADES"
+        what = _what_to_show(holder["c"])
         got = ib.reqHistoricalData(holder["c"], "", "10 D", "1 day", what, useRTH=False, formatDate=1)
         if not got:
             raise RuntimeError("no daily bars returned")
