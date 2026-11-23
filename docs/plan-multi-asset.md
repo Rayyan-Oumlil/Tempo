@@ -48,6 +48,15 @@ Said plainly: nobody has shown an edge yet, in stocks or elsewhere. What exists 
 
 Queue rule: stop adding hypotheses when the global N reaches 20 without a PASS. That is the signal that the family has no edge at this cost level, and the honest answer becomes "buy a diversified fund".
 
+### Status 2026-11-23 night (Workstream Y run)
+
+| Item | Result |
+|---|---|
+| X4 vol-targeted BTC trend | **PASS** (Sharpe 1.38 vs 1.10 buy and hold, max drawdown -39%, all frozen checks); the first candidate of the project. Needs the paper probe (step 5 below) before any paper trade. |
+| X5 signal-speed grid | ROBUST: all 8 cells beat buy and hold, minimum Sharpe 0.90. |
+| Y1 cross-asset trend | PASS under the frozen rule but flattered (mostly cash; Sharpe over cash 0.55 < 60/40's 0.60). Not a candidate; Y1b (excess Sharpe, equal risk) to be registered as trial 13. |
+| Global trial counter | 12. Stop rule at 20 unchanged. |
+
 ## 5. Engineering changes (in order, none touches the order door yet)
 
 1. **Asset registry** `tempo/universe.py`: symbol, sleeve, annualisation (252 or 365), cost per side, data source. History modules read from it instead of hard-coding lists.
