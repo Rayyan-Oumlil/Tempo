@@ -458,3 +458,20 @@ Limits stated up front: survivorship (today's constituents and still-listed issu
 | 4 | **PASS:** the same seven checks as G rule 7 (net Sharpe >= 0.60; >= the 60/40 Sharpe; Deflated Sharpe probability >= 0.95 at N = 6; max drawdown no deeper than 60/40's; net CAGR > 0 in each sub-period; Sharpe >= 0.40 at the stress cost). The stress for G5 is 10 bps a side. Raw Sharpe is the judged number, as in G. A Sharpe over cash is printed for information only and is not a criterion. |
 | 5 | **Expected failure, said in advance:** G6 will probably fail the drawdown check (a put-write book is equity-like in 2008). It is registered anyway so the answer is on record, not assumed. |
 | 6 | **Window, holdout, limits:** 2008-01 to 2025-12, 2026 untouched (holdout, only for a PASS). Survivorship (ETFs that exist today), one 18-year path, `^PUT` is an index not a tradable fund, cash yield at the T-bill rate before any broker spread. PASS is a candidate, never a promise. |
+
+
+### Workstream X: gold and crypto trend (owner request 2026-11-23, "try things on xauusd or crypto"; protocol frozen BEFORE any X return was computed)
+
+**Why.** Different asset classes from G and H: crypto is the one place with a published trend and momentum literature on a young, retail-dominated market (Liu-Tsyvinski style), and gold is the usual diversifier. History can kill these quickly; it cannot confirm them. **Honest bar:** BTC buy and hold has an enormous hindsight-selected Sharpe (the coin that survived and won), so "trend lowers the drawdown" alone is a risk product, not an edge. The bar below is therefore relative to buy and hold.
+
+**Data (stated before the run).** Yahoo adjusted closes ending 2025-12-31 (2026 is the holdout; the BTC pull ends 2026-01-01 and the loader cuts at 2025-12-31). Spot XAUUSD is not on a free feed: **GLD** is the gold proxy (spot minus about 0.4% a year, no roll jumps; `GC=F` was rejected for continuous-contract roll gaps). BTC-USD from 2014-09-17, ETH-USD from 2017-11-09. Cash: FRED DTB3, previous available value, /365 per calendar day for crypto, /252 for GLD.
+
+| # | Rule |
+|---|---|
+| 1 | **Hypotheses, N = 3, parameters fixed before any run, not tuned.** **X1:** GLD, long when close > its 200-day SMA, else cash (T-bill). **X2:** BTC, long when close > its 100-day SMA, else cash. **X3:** BTC and ETH, each held at 50% weight when its 90-day return is > 0, else that half is cash. |
+| 2 | **Timing:** signal at the close of day t, trade at the close of day t+1, the new position earns from then on. Weights are held constant between signal changes (free drift rebalancing is assumed; a stated limit). |
+| 3 | **Costs per side on traded notional:** GLD 5 bps; BTC and ETH 10 bps. Stress 3x (15 bps; 30 bps). Charged on the first day of the new position. |
+| 4 | **Windows:** X1 2008-01-01 to 2025-12-31 (sub-periods 2008-2012, 2013-2018, 2019-2025). X2 2015-01-01 to 2025-12-31 (2015-2018, 2019-2021, 2022-2025). X3 2018-03-01 to 2025-12-31 (2018-03 to 2019-12, 2020-2021, 2022-2025). Annualisation 252 for GLD, 365 for crypto. |
+| 5 | **Benchmarks:** buy and hold of the same asset(s) (X3: BTC/ETH 50/50 rebalanced monthly, same costs), same window. |
+| 6 | **PASS (candidate for a paper trade) only if ALL:** net Sharpe >= 0.60; net Sharpe >= the buy-and-hold Sharpe; Deflated Sharpe probability >= 0.95 at N = 3; max drawdown magnitude <= 75% of buy and hold's; net CAGR > 0 in each sub-period; net Sharpe >= 0.40 at the stress cost. Else NO. A rule that only lowers drawdown at a lower Sharpe than buy and hold is reported as "risk product, not edge" in the log. |
+| 7 | **Limits, said in advance:** crypto has one 11-year path, mostly one boom/bust cycle structure and is hindsight-selected (BTC and ETH are the survivors); only liquid majors; daily bars (no intraday, no funding or borrow); GLD is not spot XAUUSD (no CFD spreads, swap or leverage modelled); costs are assumptions, not fills; the Deflated Sharpe at N = 3 with correlated trials is weak. PASS is a candidate, never a promise. |
