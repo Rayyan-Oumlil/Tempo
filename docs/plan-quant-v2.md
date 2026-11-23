@@ -442,3 +442,19 @@ through February; over 80% that the project helps a quant or software career [J,
 Limits stated up front: survivorship (today's constituents and still-listed issuers), daily bars only (no intraday, no borrow data), 2019-2020 has 563 symbols with an open price before 2021 brings the rest, features that do not exist before 2021 for most names, a 4-year out-of-sample span.
 
 **M10 (added 2026-11-17 before any model was fitted): universe-selection check.** The 2021-onward bar files were fetched for symbols that appeared in 2023-2025 insider-purchase signals (`missing_symbols.json`), so the main panel's universe is partly selected on future insider activity (it grows from about 520 names a day in 2019-2021 to 900-1,260 in 2022-2025). The main run stays exactly as frozen. A **core run** repeats it on the 563 symbols of `data/history/shortvol/bars` (chosen independently of insider signals). A FORWARD in the main run counts only if the core run's net mean is also positive for the same book; otherwise the main result is treated as an artifact of universe selection.
+
+
+### Workstream H: cash-yield trend (G5) and put-write risk premium (G6) (owner request 2026-11-23, "keep trying until I find a way to win money"; protocol frozen BEFORE any G5 or G6 number was computed)
+
+**Why.** Workstream G gave cash a 0% return, which handicaps every rule that sits in cash (the G section already says a T-bill-yield version is a NEW hypothesis, counted, not a re-run). Separately, a risk premium paid for selling insurance needs no forecast; the CBOE PutWrite index (`^PUT`) is its cheapest testable form.
+
+**Data (amendment, stated before any run).** The G run used IBKR daily bars. This session has no Gateway, so the same universe was re-pulled as Yahoo adjusted closes (2006-04 to 2025-12-31) plus FRED `DTB3` (3-month T-bill, daily) and `^PUT`. Sanity check done BEFORE G5 or G6, on the unchanged G rules only: G1 0.59, G2 0.60, G3 0.55, G4 0.62 Sharpe (IBKR: 0.58, 0.57, 0.52, 0.60); SPY 0.62 and 60/40 0.71 identical. Every G verdict is still NO on the new source (all below the 60/40 Sharpe). The counted G trials use the new-source numbers from here on.
+
+| # | Rule |
+|---|---|
+| 1 | **G5:** the G4 blend (average of the G1 and G2 weights, same sizing, same monthly timing, same 5 bps a side), with the uninvested fraction `1 - sum(weights)` earning `DTB3 / 100 / 252` per trading day, using the previous available DTB3 value (no look-ahead). Nothing else changes. |
+| 2 | **G6:** buy and hold the `^PUT` index, less an implementation drag of 0.50% a year (0.005/252 per day; stress 1.00% a year). The index has no fees or slippage; the drag is the stand-in for an ETF or own execution. No timing, no tuning. |
+| 3 | **Trials:** N = 6 for the Deflated Sharpe (G1 to G4 on the new source, G5, G6). Benchmarks unchanged (SPY buy and hold; 60/40 SPY/AGG, monthly, same costs, no cash yield). |
+| 4 | **PASS:** the same seven checks as G rule 7 (net Sharpe >= 0.60; >= the 60/40 Sharpe; Deflated Sharpe probability >= 0.95 at N = 6; max drawdown no deeper than 60/40's; net CAGR > 0 in each sub-period; Sharpe >= 0.40 at the stress cost). The stress for G5 is 10 bps a side. Raw Sharpe is the judged number, as in G. A Sharpe over cash is printed for information only and is not a criterion. |
+| 5 | **Expected failure, said in advance:** G6 will probably fail the drawdown check (a put-write book is equity-like in 2008). It is registered anyway so the answer is on record, not assumed. |
+| 6 | **Window, holdout, limits:** 2008-01 to 2025-12, 2026 untouched (holdout, only for a PASS). Survivorship (ETFs that exist today), one 18-year path, `^PUT` is an index not a tradable fund, cash yield at the T-bill rate before any broker spread. PASS is a candidate, never a promise. |
