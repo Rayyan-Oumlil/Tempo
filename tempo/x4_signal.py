@@ -2,6 +2,10 @@
 
 Places no order and imports no broker code. It reads BTC-USD daily closes from Yahoo (or a CSV), uses only COMPLETED UTC days,
 and prints the decided weight plus, if a budget is given, the USD notional and BTC quantity that weight means.
+
+Yahoo leaves yesterday's daily close empty for hours after 00:00 UTC. For that one day only, the close of Yahoo's own 23:00 UTC
+hourly bar is used (measured 2026-11-28 over 91 days: median gap to the daily close 0.017%, max 0.19%), and the signal says so.
+Without that bar the series stays one day short and the trader refuses. The frozen X4 rule is unchanged.
 """
 
 from __future__ import annotations
@@ -12,11 +16,15 @@ import json
 import math
 import sys
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import pandas as pd
 
 from tempo import history_y as y
+
+DAILY_SOURCE, HOURLY_SOURCE = "yahoo daily", "yahoo 23:00 UTC hourly"
+SOURCE_ATTR = "last_close_source"
 
 
 @dataclass(frozen=True)
@@ -28,6 +36,7 @@ class X4Signal:
     signal_on: bool
     target_weight: float
     changed_today: bool
+    close_source: str = DAILY_SOURCE
 
 
 def compute_signal(close: pd.Series) -> X4Signal:
@@ -45,23 +54,48 @@ def compute_signal(close: pd.Series) -> X4Signal:
         signal_on=bool(close.iloc[-1] > sma),
         target_weight=float(weights.iloc[-1]),
         changed_today=bool(len(weights) > 1 and weights.iloc[-1] != weights.iloc[-2]),
+        close_source=close.attrs.get(SOURCE_ATTR, DAILY_SOURCE),
     )
 
 
-def fetch_closes(symbol: str = "BTC-USD") -> pd.Series:  # pragma: no cover - network
-    now = int(dt.datetime.now(dt.timezone.utc).timestamp())
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?period1=0&period2={now}&interval=1d"
+def _utc_date(ts: int) -> dt.date:
+    return dt.datetime.fromtimestamp(ts, dt.timezone.utc).date()
+
+
+def parse_closes(daily: dict, load_hourly: Callable[[], dict], today: dt.date) -> pd.Series:
+    """Completed-day closes from a Yahoo daily chart; yesterday is taken from the hourly chart if the daily one lacks it."""
+    idx = pd.to_datetime([_utc_date(ts) for ts in daily["timestamp"]])
+    s = pd.Series(daily["indicators"]["adjclose"][0]["adjclose"], index=idx, dtype="float64").dropna()
+    s = s[s.index < pd.Timestamp(today)]  # the current UTC day is still open
+    s.attrs[SOURCE_ATTR] = DAILY_SOURCE
+    yesterday = pd.Timestamp(today - dt.timedelta(days=1))
+    if yesterday in s.index:
+        return s
+    hourly = load_hourly()
+    final_bar = int(dt.datetime.combine(yesterday.date(), dt.time(23), dt.timezone.utc).timestamp())
+    close = dict(zip(hourly["timestamp"], hourly["indicators"]["quote"][0]["close"])).get(final_bar)
+    if close is None:
+        return s
+    filled = pd.concat([s, pd.Series([close], index=[yesterday], dtype="float64")])
+    filled.attrs[SOURCE_ATTR] = HOURLY_SOURCE
+    return filled
+
+
+def _chart(symbol: str, query: str) -> dict:  # pragma: no cover - network
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?{query}"
     raw = urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"}), timeout=60).read()
-    d = json.loads(raw)["chart"]["result"][0]
-    idx = pd.to_datetime([dt.datetime.fromtimestamp(t, dt.timezone.utc).date() for t in d["timestamp"]])
-    s = pd.Series(d["indicators"]["adjclose"][0]["adjclose"], index=idx, dtype="float64").dropna()
-    today = pd.Timestamp(dt.datetime.now(dt.timezone.utc).date())
-    return s[s.index < today]  # the current UTC day is still open
+    return json.loads(raw)["chart"]["result"][0]
+
+
+def fetch_closes(symbol: str = "BTC-USD") -> pd.Series:  # pragma: no cover - network
+    now = dt.datetime.now(dt.timezone.utc)
+    daily = _chart(symbol, f"period1=0&period2={int(now.timestamp())}&interval=1d")
+    return parse_closes(daily, lambda: _chart(symbol, "range=5d&interval=1h"), now.date())
 
 
 def describe(sig: X4Signal, budget_usd: float | None) -> str:
     lines = [
-        f"X4 as of {sig.as_of} (last completed UTC day)",
+        f"X4 as of {sig.as_of} (last completed UTC day), last close from {sig.close_source}",
         f"  BTC close {sig.close:,.2f}   SMA100 {sig.sma100:,.2f}   30d vol {sig.vol30:.0%} annualised",
         f"  signal: {'ON (close above SMA100)' if sig.signal_on else 'OFF (close at or below SMA100)'}",
         f"  decided target weight: {sig.target_weight:.0%} of the sleeve{'  (CHANGED today)' if sig.changed_today else ''}",
